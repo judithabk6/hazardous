@@ -22,16 +22,20 @@ from hazardous.metrics._brier_score import (
     integrated_brier_score_incidence,
     brier_score_incidence,
     brier_score_incidence_oracle,
+    integrated_brier_score_incidence_oracle,
 )
 from hazardous.metrics._concordance import concordance_index_ipcw
 
 from main import DATASET_GRID, SEER_PATH, SEED
+import matplotlib.ticker as mtick
+
 
 sns.set_style(
     style="white",
 )
 sns.set_context("paper")
 sns.set_palette("colorblind")
+plt.style.use("seaborn-v0_8-talk")
 
 
 def aggregate_result(path_session_dataset, estimator_names):
@@ -176,7 +180,9 @@ class BaseDisplayer(ABC):
 
                 ax.set_title(f"event {event_id}")
         axes[0].legend()
-        plt.savefig(self.path_profile / "PSR.pdf", format="pdf")
+        plt.savefig(
+            self.path_profile / "PSR.pdf", format="pdf", dpi=300, bbox_inches="tight"
+        )
 
     def plot_marginal_incidence(self, data_params):
         df = self.load_cv_results(data_params)
@@ -186,7 +192,7 @@ class BaseDisplayer(ABC):
 
         n_events = y["event"].nunique() - 1
         fig, axes = plt.subplots(figsize=(12, 4), ncols=n_events, sharey=True)
-
+        sns.despine()
         censoring_fraction = (y["event"] == 0).mean()
         kind = _get_kind(data_params)
         fig.suptitle(
@@ -234,7 +240,12 @@ class BaseDisplayer(ABC):
 
         for ax in [axes[1], axes[2]]:
             ax.legend().remove()
-        plt.savefig(self.path_profile / "marginal_incidence.pdf", format="pdf")
+        plt.savefig(
+            self.path_profile / "marginal_incidence.pdf",
+            format="pdf",
+            dpi=300,
+            bbox_inches="tight",
+        )
 
     def plot_individual_incidence(self, data_params, sample_ids=2):
         if isinstance(sample_ids, int):
@@ -285,7 +296,12 @@ class BaseDisplayer(ABC):
                         if col_idx == 0:
                             ax.legend()
         plt.tight_layout()
-        plt.savefig(self.path_profile / "individual_incidence.pdf", format="pdf")
+        plt.savefig(
+            self.path_profile / "individual_incidence.pdf",
+            format="pdf",
+            dpi=300,
+            bbox_inches="tight",
+        )
 
     def print_table_metrics(self, data_params):
         df = self.load_cv_results(data_params)
@@ -365,6 +381,7 @@ class BaseDisplayer(ABC):
         # Plot performance vs time
         df = self.load_cv_results(data_params, x_col)
         fig, ax = plt.subplots(figsize=(8, 4))
+        sns.despine(fig=fig)
         fit_time = {
             "mean_fit_time": [],
             "std_fit_time": [],
@@ -377,7 +394,6 @@ class BaseDisplayer(ABC):
 
                 X, y = self.load_dataset(data_params, return_X_y=True)
                 time_grid = make_time_grid(y["duration"])
-
                 estimator = _get_estimator(df_group, estimator_name)
 
                 y_train = estimator.y_train  # hack for benchmarks
@@ -410,7 +426,12 @@ class BaseDisplayer(ABC):
             xlabel="time(s) to fit",
             ylabel="IPSR",
         )
-        plt.savefig(self.path_profile / "performance_vs_time.pdf", format="pdf")
+        plt.savefig(
+            self.path_profile / "performance_vs_time.pdf",
+            format="pdf",
+            dpi=300,
+            bbox_inches="tight",
+        )
 
 
 class WeibullDisplayer(BaseDisplayer):
@@ -451,7 +472,12 @@ class WeibullDisplayer(BaseDisplayer):
             title="Time to test",
             ylabel=None,
         )
-        plt.savefig(self.path_profile / "memory_time.pdf", format="pdf")
+        plt.savefig(
+            self.path_profile / "memory_time.pdf",
+            format="pdf",
+            dpi=300,
+            bbox_inches="tight",
+        )
 
     def plot_IPSR(self, data_params):
         x_cols = ["n_samples", "censoring_relative_scale"]
@@ -459,7 +485,19 @@ class WeibullDisplayer(BaseDisplayer):
         sns.despine(fig=fig)
         for x_col, ax in zip(x_cols, axes):
             self._plot_IPSR(data_params, x_col, ax)
-        plt.savefig(self.path_profile / "IPSR.pdf", format="pdf")
+        axes[0].set(
+            xlabel="Number of Training Samples",
+            ylabel="IBS",
+        )
+        axes[1].set(
+            xlabel="Censoring Rate",
+            ylabel=None,
+        )
+        axes[1].xaxis.set_major_formatter(mtick.PercentFormatter())
+
+        plt.savefig(
+            self.path_profile / "IPSR.pdf", format="pdf", dpi=300, bbox_inches="tight"
+        )
 
     def _plot_IPSR(self, data_params, x_col, ax):
         df = self.load_cv_results(data_params, x_col)
@@ -475,6 +513,10 @@ class WeibullDisplayer(BaseDisplayer):
                 estimator = _get_estimator(df_group, estimator_name)
 
                 y_train = estimator.y_train  # hack for benchmarks
+                if x_col == "censoring_relative_scale":
+                    x_col_param = int(
+                        y_train["event"].value_counts(normalize=True)[0] * 100
+                    )
                 y_pred = self.get_predictions(X, time_grid, estimator, estimator_name)
                 event_specific_ipsr = []
                 for idx in range(data_params["n_events"]):
@@ -498,9 +540,8 @@ class WeibullDisplayer(BaseDisplayer):
                 marker="o",
             )
             ax.set(
-                title="IBS",
                 xlabel=x_col,
-                ylabel=None,
+                ylabel="IBS",
             )
             ax.legend()
 
@@ -510,13 +551,75 @@ class WeibullDisplayer(BaseDisplayer):
 
     def load_dataset(self, data_params, return_X_y=False, use_cache=True):
         del use_cache
+        data_test = data_params.copy()
+        data_test["n_samples"] = 10_000
         return make_synthetic_competing_weibull(
-            **data_params, return_X_y=return_X_y, random_state=1345
+            **data_test, return_X_y=return_X_y, random_state=1345
         )
 
     def get_predictions(self, X, times, estimator, estimator_name):
         """TODO: implement cache if some estimators take long to predict."""
         return estimator.predict_cumulative_incidence(X, times)
+
+    def plot_performance_time(self, data_params, x_col="n_samples"):
+        # Plot performance vs time
+        df = self.load_cv_results(data_params, x_col)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        sns.despine(fig=fig)
+        fit_time = {
+            "mean_fit_time": [],
+            "std_fit_time": [],
+            "estimator_name": [],
+            "mean_ipsr": [],
+        }
+        for estimator_name in tqdm(self.estimator_names):
+            for x_col_param, df_group in df.groupby(x_col):
+                data_params[x_col] = x_col_param
+                bunch = self.load_dataset(data_params)
+                X, y = bunch.X, bunch.y
+                scale_censoring = bunch.scale_censoring
+                shape_censoring = bunch.shape_censoring
+                time_grid = make_time_grid(y["duration"])
+                estimator = _get_estimator(df_group, estimator_name)
+                print(len(y))
+                y_pred = self.get_predictions(X, time_grid, estimator, estimator_name)
+                event_specific_ipsr = []
+                print(estimator_name)
+                for idx in range(data_params["n_events"]):
+                    event_specific_ipsr.append(
+                        integrated_brier_score_incidence_oracle(
+                            y_train=y,
+                            y_test=y,
+                            scale_censoring=scale_censoring,
+                            shape_censoring=shape_censoring,
+                            # TODO: remove when removing GBI.
+                            y_pred=y_pred[idx + 1],
+                            times=time_grid,
+                            event_of_interest=idx + 1,
+                        )
+                    )
+                fit_time["mean_fit_time"].append(df_group["mean_fit_time"].values[0])
+                fit_time["estimator_name"].append(estimator_name + f" {x_col_param} TS")
+                fit_time["mean_ipsr"].append(np.mean(event_specific_ipsr))
+                fit_time["std_fit_time"].append(df_group["std_fit_time"].values[0])
+        fit_time = pd.DataFrame(fit_time)
+        sns.scatterplot(
+            fit_time,
+            x="mean_fit_time",
+            y="mean_ipsr",
+            hue="estimator_name",
+            ax=ax,
+        )
+        ax.set(
+            xlabel="time(s) to fit",
+            ylabel="IPSR",
+        )
+        plt.savefig(
+            self.path_profile / "performance_vs_time.pdf",
+            format="pdf",
+            dpi=300,
+            bbox_inches="tight",
+        )
 
 
 class SEERDisplayer(BaseDisplayer):
@@ -558,7 +661,12 @@ class SEERDisplayer(BaseDisplayer):
             title="Time to test",
             ylabel=None,
         )
-        plt.savefig(self.path_profile / "memory_time.pdf", format="pdf")
+        plt.savefig(
+            self.path_profile / "memory_time.pdf",
+            format="pdf",
+            dpi=300,
+            bbox_inches="tight",
+        )
 
     def load_cv_results(self, data_params, x_col=None):
         del data_params, x_col
@@ -602,7 +710,7 @@ class SEERDisplayer(BaseDisplayer):
 
 # %%
 
-path_session = "2024-01-20"
+path_session = "2024-01-17_2"
 estimator_names = ["gbmi_competing_loss"]
 displayer = SEERDisplayer(path_session, estimator_names)
 
@@ -627,8 +735,13 @@ displayer.print_table_metrics(data_params=data_params)
 
 # %%
 
-path_session = "2024-01-20"
-estimator_names = ["gbmi_competing_loss"]
+path_session = "2024-01-23"
+estimator_names = [
+    "gbmi_competing_loss",
+    "gbmi_log_loss",
+    "fine_and_gray",
+    "aalen_johansen",
+]
 displayer = WeibullDisplayer(path_session, estimator_names)
 
 data_params = {
@@ -642,7 +755,13 @@ displayer.plot_memory_time(data_params)
 # %%
 displayer.plot_performance_time(data_params)
 # %%
-
+data_params.update(
+    {
+        "censoring_relative_scale": 1.5,
+        "independent_censoring": False,
+        "n_samples": 5_000,
+    }
+)
 displayer.plot_IPSR(data_params)
 
 # %%
@@ -652,6 +771,7 @@ data_params.update(
     {
         "censoring_relative_scale": 1.5,
         "independent_censoring": True,
+        "n_samples": 5_000,
     }
 )
 displayer.plot_PSR(

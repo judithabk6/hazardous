@@ -98,7 +98,7 @@ def _censor(
             n_events=1,
             degree_interaction=2,
             shape_ranges=[(0.1, 20.0)],
-            scale_ranges=[(0.5, 1.5)],
+            scale_ranges=[(0.3, 3.5)],
             random_state=random_state,
         )
         SS_star.columns = ["shape_0", "scale_0"]
@@ -380,11 +380,11 @@ def make_synthetic_competing_weibull(
     n_events=3,
     n_samples=3_000,
     base_scale=1_000,
-    n_features=10,
-    features_rate=0.3,
+    n_features=20,
+    features_rate=0.5,
     degree_interaction=2,
     independent_censoring=True,
-    features_censoring_rate=0.2,
+    features_censoring_rate=0.4,
     feature_rounding=2,
     target_rounding=4,
     shape_ranges=DEFAULT_SHAPE_RANGES,

@@ -16,7 +16,7 @@ from hazardous.data._competing_weibull import (
 
 event_of_interest = 1
 seed = 0
-n_samples = 3_000
+n_samples = 50_000
 
 X, event_durations, duration_argmin = make_complex_features_with_sparse_matrix(
     n_events=3,
@@ -41,28 +41,45 @@ from matplotlib import pyplot as plt
 
 from hazardous.data._competing_weibull import _censor
 
+sns.set_style(
+    style="white",
+)
+sns.set_context("paper")
+sns.set_palette("colorblind")
+plt.style.use("seaborn-v0_8-talk")
+
 
 def plot_events(y, kind):
     censoring_rate = int((y["event"] == 0).mean() * 100)
-    ax = sns.histplot(
+    _, ax = plt.subplots(figsize=(8, 5))
+    sns.histplot(
         y,
         x="duration",
         hue="event",
-        palette="magma",
+        palette="colorblind",
         multiple="stack",
+        ax=ax,
     )
-    title = (
-        f"Duration distributions when censoring is {kind} of X, {censoring_rate=!r}%"
+    print(
+        f"Duration distributions when censoring is {kind} of X, censoring rate"
+        f" {censoring_rate}%"
     )
-    ax.set(title=title)
+    # ax.set(title=title)
+    sns.despine()
+    plt.tight_layout()
+    plt.xlim(0, 3200)
+    plt.legend(["Event 1", "Event 2", "Event 3", "Censored"], loc="upper right")
+    plt.savefig(
+        "distribution_censoring.pdf", format="pdf", bbox_inches="tight", dpi=300
+    )
 
 
 bunch = _censor(
     y_uncensored,
-    independent_censoring=True,
+    independent_censoring=False,
     X=X,
     features_censoring_rate=0.5,
-    censoring_relative_scale=1,
+    censoring_relative_scale=0.8,
     random_state=seed,
 )
 y_censored_indep = bunch.y_censored
@@ -80,7 +97,7 @@ bunch = _censor(
     independent_censoring=False,
     X=X,
     features_censoring_rate=0.5,
-    censoring_relative_scale=1,
+    censoring_relative_scale=0.8,
     random_state=seed,
 )
 y_censored_dep = bunch.y_censored

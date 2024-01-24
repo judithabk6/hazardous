@@ -15,62 +15,81 @@ from hazardous.data._seer import load_seer
 from hazardous._gb_multi_incidence import GBMultiIncidence
 
 # from hazardous.survtrace._encoder import SurvFeatureEncoder
-from hazardous._deep_hit import _DeepHit
+# from hazardous._deep_hit import _DeepHit
 from hazardous._fine_and_gray import FineGrayEstimator
+from hazardous._aalen_johasen import AalenJohansenEstimator
 
 # from hazardous.utils import CumulativeIncidencePipeline
 
 from memory_monitor import MemoryMonitor
 
+SEED = 0
 # Enable oracle scoring for GridSearchCV
 # GBMI.set_score_request(scale=True, shape=True)
 
 gbmi_competing_loss = GBMultiIncidence(loss="competing_risks", show_progressbar=True)
+gbmi_log_loss = GBMultiIncidence(loss="inll", show_progressbar=True)
 
-deephit = _DeepHit(
-    num_nodes_shared=[64, 64],
-    num_nodes_indiv=[32],
-    verbose=True,
-    num_durations=10,
-    batch_norm=True,
-    dropout=None,
-)
+# deephit = _DeepHit(
+#   num_nodes_shared=[64, 64],
+#    num_nodes_indiv=[32],
+#    verbose=True,
+#    num_durations=10,
+#    batch_norm=True,
+#    dropout=None,
+# )
 
 fine_and_gray = FineGrayEstimator()
+aalen_johansen = AalenJohansenEstimator(calculate_variance=False, seed=SEED)
 
 ESTIMATOR_GRID = {
-    #     "gbmi_competing_loss": {
-    #         "estimator": gbmi_competing_loss,
-    #         "param_grid": {
-    #             "gb_multi_incidence__learning_rate": [0.01, 0.03],
-    #             "gb_multi_incidence__max_depth": [5, 10],
-    #             "gb_multi_incidence__n_iter": [50, 100, 200],
-    #             "gb_multi_incidence__n_times": [2, 3, 5],
-    #         },
-    #    },
-    "deephit": {
-        "estimator": deephit,
+    "gbmi_competing_loss": {
+        "estimator": gbmi_competing_loss,
         "param_grid": {
-            "deephit__batch_size": [128, 256],
-            "deephit__epochs": [256, 512],
-            "deephit__alpha": [0.2, 0.3],
-            "deephit__sigma": [0.1, 0.2],
+            "learning_rate": [0.03, 0.05],
+            "max_depth": [5, 10],
+            "n_iter": [100, 200],
+            "n_times": [1, 3],
+            "n_iter_before_feedback": [50, 30],
         },
-        "fine_and_gray": {
-            "estimator": fine_and_gray,
-            "param_grid": {},
+    },
+    "gbmi_log_loss": {
+        "estimator": gbmi_log_loss,
+        "param_grid": {
+            "learning_rate": [0.03, 0.05],
+            "max_depth": [5, 10],
+            "n_iter": [100, 200],
+            "n_times": [1, 3],
+            "n_iter_before_feedback": [50, 30],
         },
-    }
+    },
+    # "deephit": {
+    #    "estimator": deephit,
+    #    "param_grid": {
+    #            "gb_multi_incidence__learning_rate": [0.01, 0.03],
+    #            "gb_multi_incidence__max_depth": [5, 10],
+    #            "gb_multi_incidence__n_iter": [50, 100, 200],
+    #            "gb_multi_incidence__n_times": [2, 3, 5],
+    #        },
+    #   },
+    "fine_and_gray": {
+        "estimator": fine_and_gray,
+        "param_grid": {},
+    },
+    "aalen_johansen": {
+        "estimator": aalen_johansen,
+        "param_grid": {},
+    },
 }
 
 
 # Parameters of the make_synthetic_competing_weibull function.
 DATASET_GRID = {
     "n_events": [3],
-    "n_samples": [1_000, 5_000],  # , 10_000, 20_000, 50_000],
-    "censoring_relative_scale": [0.8, 1.5, 2.5],
+    "n_samples": [1_000, 10_000],  # 20_000, 50_000],
+    "censoring_relative_scale": [0.75, 0.8, 2.5],
     "complex_features": [True],
-    "independent_censoring": [True, False],
+    "independent_censoring": [False],
 }
 
 PATH_DAILY_SESSION = Path(datetime.now().strftime("%Y-%m-%d"))
