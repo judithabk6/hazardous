@@ -21,12 +21,14 @@ class BertEmbeddings(nn.Module):
         hidden_size=16,
         layer_norm_eps=1e-12,
         hidden_dropout_prob=0.0,
+        initializer_range=0.02,
     ):
         super().__init__()
         self.word_embeddings = nn.Embedding(vocab_size + 1, hidden_size)
         self.num_embeddings = nn.Parameter(
             torch.randn(1, n_numerical_features, hidden_size)
         )
+        self.num_embeddings.data.normal_(mean=0.0, std=initializer_range)
         self.layer_norm = nn.LayerNorm(hidden_size, eps=layer_norm_eps)
         self.dropout = nn.Dropout(hidden_dropout_prob)
 
@@ -89,6 +91,7 @@ class BertLayer(nn.Module):
     def __init__(self):
         super().__init__()
         self.seq_len_dim = 1
+        self.chunk_size_feed_forward = 0
         self.attention = BertAttention()
         self.intermediate = BertIntermediate()
         self.output = BertOutput()
@@ -119,7 +122,10 @@ class BertLayer(nn.Module):
         ]  # add self attentions if we output attention weights
 
         hidden_states = apply_chunking_to_forward(
-            self.feed_forward_chunk, self.seq_len_dim, attention_output
+            self.feed_forward_chunk,
+            self.chunk_size_feed_forward,
+            self.seq_len_dim,
+            attention_output,
         )
 
         return hidden_states, self_attentions
@@ -395,17 +401,19 @@ class BertCLSMulti(nn.Module):
             )
         )
 
+        # XXX: is this necessary?
         self.net = nn.Sequential(*net)
 
         net_out = []
         for _ in range(n_events):
             net_out.append(nn.Linear(intermediate_size, n_features_out))
         self.net_out = nn.ModuleList(net_out)
+        self.n_events = n_events
 
-    def forward(self, hidden_states, event=0):
+    def forward(self, hidden_states, event_of_interest=1):
         hidden_states = hidden_states.flatten(start_dim=1)
         hidden_states = self.net(hidden_states)
-        output = self.net_out[event](hidden_states)
+        output = self.net_out[event_of_interest - 1](hidden_states)
         return output
 
 
@@ -508,7 +516,10 @@ def find_pruneable_heads_and_indices(
 
 
 def apply_chunking_to_forward(
-    forward_fn: Callable[..., torch.Tensor], chunk_dim: int, *input_tensors
+    forward_fn: Callable[..., torch.Tensor],
+    chunk_size: int,
+    chunk_dim: int,
+    *input_tensors,
 ) -> torch.Tensor:
     """
     This function chunks the :obj:`input_tensors` into smaller input tensor \
@@ -545,7 +556,7 @@ def apply_chunking_to_forward(
             return apply_chunking_to_forward(self.forward_chunk, \
                 self.chunk_size_lm_head, self.seq_len_dim, hidden_states)
     """
-
+    del chunk_size
     assert len(input_tensors) > 0, f"{input_tensors} has to be a tuple/list of tensors"
     tensor_shape = input_tensors[0].shape[chunk_dim]
     assert all(

@@ -29,7 +29,6 @@ from hazardous.metrics._concordance import concordance_index_ipcw
 from main import DATASET_GRID, SEER_PATH, SEED
 import matplotlib.ticker as mtick
 
-
 sns.set_style(
     style="white",
 )
@@ -507,7 +506,12 @@ class WeibullDisplayer(BaseDisplayer):
             for x_col_param, df_group in df.groupby(x_col):
                 data_params[x_col] = x_col_param
 
-                X, y = self.load_dataset(data_params, return_X_y=True)
+                bunch = self.load_dataset(data_params, return_X_y=False)
+                X, y = bunch.X, bunch.y
+                scale_censoring, shape_censoring = (
+                    bunch.scale_censoring,
+                    bunch.shape_censoring,
+                )
                 time_grid = make_time_grid(y["duration"])
 
                 estimator = _get_estimator(df_group, estimator_name)
@@ -521,13 +525,14 @@ class WeibullDisplayer(BaseDisplayer):
                 event_specific_ipsr = []
                 for idx in range(data_params["n_events"]):
                     event_specific_ipsr.append(
-                        integrated_brier_score_incidence(
+                        integrated_brier_score_incidence_oracle(
                             y_train=y_train,
                             y_test=y,
-                            # TODO: remove when removing GBI.
-                            y_pred=y_pred[idx + 1] if y_pred.ndim == 3 else y_pred,
+                            y_pred=y_pred[idx + 1],
                             times=time_grid,
                             event_of_interest=idx + 1,
+                            shape_censoring=shape_censoring,
+                            scale_censoring=scale_censoring,
                         )
                     )
                 x_col_params.append(x_col_param)
