@@ -4,11 +4,14 @@ from itertools import product
 from datetime import datetime
 import pandas as pd
 import numpy as np
-from memory_profiler import profile
 from sklearn.utils import Bunch
 
 from joblib import delayed, Parallel, dump
-from sklearn.model_selection import GridSearchCV, train_test_split, cross_validate
+from sklearn.model_selection import (
+    RandomizedSearchCV,
+    train_test_split,
+)
+from scipy.stats import loguniform, randint
 
 from hazardous.data._competing_weibull import make_synthetic_competing_weibull
 from hazardous.data._seer import load_seer
@@ -20,8 +23,6 @@ from hazardous._fine_and_gray import FineGrayEstimator
 from hazardous._aalen_johasen import AalenJohansenEstimator
 
 # from hazardous.utils import CumulativeIncidencePipeline
-
-from memory_monitor import MemoryMonitor
 
 SEED = 0
 # Enable oracle scoring for GridSearchCV
@@ -42,54 +43,42 @@ gbmi_log_loss = GBMultiIncidence(loss="inll", show_progressbar=True)
 fine_and_gray = FineGrayEstimator()
 aalen_johansen = AalenJohansenEstimator(calculate_variance=False, seed=SEED)
 
+gbmi_param_grid = {
+    "learning_rate": loguniform(0.01, 0.5),
+    "max_depth": randint(2, 10),
+    "n_iter": randint(20, 200),
+    "n_times": randint(1, 5),
+    "n_iter_before_feedback": randint(20, 50),
+}
+
 ESTIMATOR_GRID = {
     "gbmi_competing_loss": {
         "estimator": gbmi_competing_loss,
-        "param_grid": {
-            "learning_rate": [0.03, 0.05],
-            "max_depth": [5, 10],
-            "n_iter": [100, 200],
-            "n_times": [1, 3],
-            "n_iter_before_feedback": [50, 30],
-        },
+        "param_grid": gbmi_param_grid,
     },
     "gbmi_log_loss": {
         "estimator": gbmi_log_loss,
-        "param_grid": {
-            "learning_rate": [0.03, 0.05],
-            "max_depth": [5, 10],
-            "n_iter": [100, 200],
-            "n_times": [1, 3],
-            "n_iter_before_feedback": [50, 30],
-        },
+        "param_grid": gbmi_param_grid,
     },
-    # "deephit": {
-    #    "estimator": deephit,
-    #    "param_grid": {
-    #            "gb_multi_incidence__learning_rate": [0.01, 0.03],
-    #            "gb_multi_incidence__max_depth": [5, 10],
-    #            "gb_multi_incidence__n_iter": [50, 100, 200],
-    #            "gb_multi_incidence__n_times": [2, 3, 5],
-    #        },
-    #   },
     "fine_and_gray": {
         "estimator": fine_and_gray,
         "param_grid": {},
     },
-    "aalen_johansen": {
-        "estimator": aalen_johansen,
-        "param_grid": {},
-    },
+    # "aalen_johansen": {
+    #     "estimator": aalen_johansen,
+    #     "param_grid": {},
+    # },
 }
 
 
 # Parameters of the make_synthetic_competing_weibull function.
 DATASET_GRID = {
-    "n_events": [3],
-    "n_samples": [1_000, 10_000],  # 20_000, 50_000],
-    "censoring_relative_scale": [0.75, 0.8, 2.5],
-    "complex_features": [True],
-    "independent_censoring": [False],
+    "n_events": [3, 5],
+    "n_samples": [1_000, 10_000, 20_000, 50_000, 200_000],
+    "censoring_relative_scale": [0.65, 0.8, 1.5, 2.5],
+    "complex_features": [True, False],
+    "independent_censoring": [False, True],
+    "n_features": [10, 20, 40],
 }
 
 PATH_DAILY_SESSION = Path(datetime.now().strftime("%Y-%m-%d"))
@@ -97,33 +86,41 @@ PATH_DAILY_SESSION = Path(datetime.now().strftime("%Y-%m-%d"))
 SEER_PATH = "../hazardous/data/seer_cancer_cardio_raw_data.txt"
 CHURN_PATH = "../hazardous/data/churn.csv"
 SEED = 0
+N_JOBS_CV = 15
+N_ITER_CV = 10
 
 
-@profile()
-def run_all_synthetic_datasets():
+def run_all_synthetic_datasets(estimator_name):
     grid_dataset_params = list(product(*DATASET_GRID.values()))
 
-    parallel = Parallel(n_jobs=-1)
+    parallel = Parallel(n_jobs=None)
     parallel(
-        delayed(run_synthetic_dataset)(dataset_params)
+        delayed(run_synthetic_dataset)(estimator_name, dataset_params)
         for dataset_params in grid_dataset_params
     )
 
 
-def run_synthetic_dataset(dataset_params):
+def run_synthetic_dataset(estimator_name, dataset_params):
     dataset_params = dict(zip(DATASET_GRID.keys(), dataset_params))
-    data_bunch = make_synthetic_competing_weibull(**dataset_params)
-    for estimator_name in ESTIMATOR_GRID:
-        run_estimator(
-            estimator_name,
-            data_bunch,
-            dataset_name="weibull",
-            dataset_params=dataset_params,
-        )
+    data_bunch = make_synthetic_competing_weibull(
+        **dataset_params, feature_rounding=None, target_rounding=None
+    )
+
+    print(f"{estimator_name}\n{dataset_params}")
+
+    if estimator_name == "fine_and_gray" and dataset_params["n_samples"] > 10_000:
+        print("SKIP")
+        return
+
+    run_estimator(
+        estimator_name,
+        data_bunch,
+        dataset_name="weibull",
+        dataset_params=dataset_params,
+    )
 
 
-@profile()
-def run_real_dataset(dataset_name="seer"):
+def run_real_dataset(estimator_name, dataset_name="seer"):
     if dataset_name == "seer":
         data_bunch = load_seer(
             SEER_PATH,
@@ -149,29 +146,31 @@ def run_real_dataset(dataset_name="seer"):
         X_train, y_train = X_train_.iloc[idx_train], y_train_.iloc[idx_train]
         data_bunch.X, data_bunch.y = X_train, y_train
 
-        parallel = Parallel(n_jobs=-1)
-        parallel(
-            delayed(run_estimator)(
-                estimator_name,
-                data_bunch,
-                dataset_name=dataset_name,
-                dataset_params={"samples_ratio": samples_ratio},
-            )
-            for estimator_name in ESTIMATOR_GRID
+        run_estimator(
+            estimator_name,
+            data_bunch,
+            dataset_name=dataset_name,
+            dataset_params={"samples_ratio": samples_ratio},
         )
 
 
 def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     """Find the best hyper-parameters for a given model and a given dataset."""
 
-    print(f"{estimator_name}\n{dataset_params}")
     X, y = data_bunch.X, data_bunch.y
     # scale_censoring = data_bunch.scale_censoring
     # shape_censoring = data_bunch.shape_censoring
     estimator = ESTIMATOR_GRID[estimator_name]["estimator"]
     param_grid = ESTIMATOR_GRID[estimator_name]["param_grid"]
 
-    hp_search = GridSearchCV(estimator, param_grid, cv=2, return_train_score=True)
+    hp_search = RandomizedSearchCV(
+        estimator,
+        param_grid,
+        cv=3,
+        return_train_score=True,
+        n_iter=N_ITER_CV,
+        n_jobs=N_JOBS_CV,
+    )
     hp_search.fit(
         X,
         y,
@@ -194,11 +193,7 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     best_results = best_results.iloc[hp_search.best_index_].to_dict()
     best_results["estimator_name"] = estimator_name
 
-    monitor = MemoryMonitor()
-    cross_validate(best_estimator, X, y, cv=3)
-    monitor.join()
-    peak_memory = max(monitor.memory_buffer) / 1e6  # unit is MiB
-    best_results["peak_memory"] = peak_memory
+    best_estimator.fit(X, y)
 
     # hack for benchmarks
     best_estimator.y_train = y
@@ -212,8 +207,3 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     dump(best_estimator, path_profile / "best_estimator.joblib")
     json.dump(best_results, open(path_profile / "cv_results.json", "w"))
     json.dump(dataset_params, open(path_profile / "dataset_params.json", "w"))
-
-
-if __name__ == "__main__":
-    run_all_synthetic_datasets()
-    # run_real_dataset("seer")
