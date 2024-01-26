@@ -4,6 +4,7 @@ also published under the MIT license with the following copyright:
 
     Copyright (c) 2021 Maximum
 """
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -68,8 +69,26 @@ class SurvTRACE(NeuralNet):
         weight_decay=0,
         device="cpu",
         max_epochs=100,
+        init_range=0.02,
+        # BertEmbedding
+        hidden_size=16,
+        layer_norm_eps=1e-12,
+        hidden_dropout_prob=0.0,
+        initializer_range=0.02,
+        # BertEncoder
+        num_hidden_layers=3,
+        # BertCLS
+        intermediate_size=64,
     ):
-        module = _SurvTRACEModule()
+        module = _SurvTRACEModule(
+            init_range=init_range,
+            hidden_size=hidden_size,
+            layer_norm_eps=layer_norm_eps,
+            hidden_dropout_prob=hidden_dropout_prob,
+            initializer_range=initializer_range,
+            num_hidden_layers=num_hidden_layers,
+            intermediate_size=intermediate_size,
+        )
         # Skorch hack 2: this allows to use ShapeSetter on nested modules
         self._modules = ["module", "embeddings", "cls"]
         self.embeddings_ = module.embeddings

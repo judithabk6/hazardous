@@ -254,10 +254,7 @@ class FineGrayEstimator(BaseEstimator):
 
         # Check no constant columns
         stds = X.std(axis=0)
-        if (stds == 0).any():
-            constant_columns = stds[stds == 0].index
-            raise ValueError(f"Constant columns {constant_columns} need jittering.")
-
+        X = X.loc[:, stds > 0]
         return X
 
     def score(self, X, y, shape_censoring=None, scale_censoring=None):

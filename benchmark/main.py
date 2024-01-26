@@ -21,6 +21,7 @@ from hazardous._gb_multi_incidence import GBMultiIncidence
 # from hazardous._deep_hit import _DeepHit
 from hazardous._fine_and_gray import FineGrayEstimator
 from hazardous._aalen_johasen import AalenJohansenEstimator
+from hazardous.survtrace._model import SurvTRACE
 
 # from hazardous.utils import CumulativeIncidencePipeline
 
@@ -42,6 +43,7 @@ gbmi_log_loss = GBMultiIncidence(loss="inll", show_progressbar=True)
 
 fine_and_gray = FineGrayEstimator()
 aalen_johansen = AalenJohansenEstimator(calculate_variance=False, seed=SEED)
+survtrace = SurvTRACE(device="cpu", max_epochs=30)
 
 gbmi_param_grid = {
     "learning_rate": loguniform(0.01, 0.5),
@@ -51,23 +53,36 @@ gbmi_param_grid = {
     "n_iter_before_feedback": randint(20, 50),
 }
 
+survtrace_grid = {
+    "lr": loguniform(1e-5, 1e-3),
+    "batch_size": [256, 512, 1024],
+    "hidden_size": [8, 16, 32, 64],
+    "num_hidden_layers": [2, 3, 4],
+    "intermediate_size": [64],
+}
+
 ESTIMATOR_GRID = {
-    "gbmi_competing_loss": {
-        "estimator": gbmi_competing_loss,
-        "param_grid": gbmi_param_grid,
-    },
-    "gbmi_log_loss": {
-        "estimator": gbmi_log_loss,
-        "param_grid": gbmi_param_grid,
-    },
+    # "gbmi_competing_loss": {
+    #     "estimator": gbmi_competing_loss,
+    #     "param_grid": gbmi_param_grid,
+    # },
+    # "gbmi_log_loss": {
+    #     "estimator": gbmi_log_loss,
+    #     "param_grid": gbmi_param_grid,
+    # },
+    # "survtrace":{
+    #     "estimator": survtrace,
+    #     "param_grid": survtrace_grid
+    #     }
+    # }
     "fine_and_gray": {
         "estimator": fine_and_gray,
         "param_grid": {},
     },
-    # "aalen_johansen": {
-    #     "estimator": aalen_johansen,
-    #     "param_grid": {},
-    # },
+    "aalen_johansen": {
+        "estimator": aalen_johansen,
+        "param_grid": {},
+    },
 }
 
 
@@ -207,3 +222,8 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     dump(best_estimator, path_profile / "best_estimator.joblib")
     json.dump(best_results, open(path_profile / "cv_results.json", "w"))
     json.dump(dataset_params, open(path_profile / "dataset_params.json", "w"))
+
+
+if __name__ == "__main__":
+    run_all_synthetic_datasets("fine_and_gray")
+    run_all_synthetic_datasets("aalen_johansen")

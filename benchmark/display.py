@@ -505,7 +505,7 @@ class WeibullDisplayer(BaseDisplayer):
             x_col_params, all_ipsr = [], []
             for x_col_param, df_group in df.groupby(x_col):
                 data_params[x_col] = x_col_param
-
+                print(df_group)
                 bunch = self.load_dataset(data_params, return_X_y=False)
                 X, y = bunch.X, bunch.y
                 scale_censoring, shape_censoring = (
@@ -740,20 +740,20 @@ displayer.print_table_metrics(data_params=data_params)
 
 # %%
 
-path_session = "2024-01-23"
+path_session = "2024-01-24"
 estimator_names = [
     "gbmi_competing_loss",
     "gbmi_log_loss",
-    "fine_and_gray",
+    # "fine_and_gray",
     "aalen_johansen",
 ]
 displayer = WeibullDisplayer(path_session, estimator_names)
 
 data_params = {
-    "censoring_relative_scale": 1.5,
+    "censoring_relative_scale": 0.75,
     "n_events": 3,
     "complex_features": True,
-    "independent_censoring": True,
+    "independent_censoring": False,
 }
 displayer.plot_memory_time(data_params)
 
@@ -762,7 +762,7 @@ displayer.plot_performance_time(data_params)
 # %%
 data_params.update(
     {
-        "censoring_relative_scale": 1.5,
+        "censoring_relative_scale": 0.75,
         "independent_censoring": False,
         "n_samples": 5_000,
     }
