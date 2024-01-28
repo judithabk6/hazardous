@@ -3,15 +3,10 @@ from pathlib import Path
 from itertools import product
 from datetime import datetime
 import pandas as pd
-import numpy as np
-from sklearn.utils import Bunch
 
 from joblib import delayed, Parallel, dump
-from sklearn.model_selection import (
-    RandomizedSearchCV,
-    train_test_split,
-)
 from scipy.stats import loguniform, randint
+from sklearn.model_selection import GridSearchCV, train_test_split, StratifiedKFold
 
 from hazardous.data._competing_weibull import make_synthetic_competing_weibull
 from hazardous.data._seer import load_seer
@@ -22,6 +17,7 @@ from hazardous._gb_multi_incidence import GBMultiIncidence
 from hazardous._fine_and_gray import FineGrayEstimator
 from hazardous._aalen_johasen import AalenJohansenEstimator
 from hazardous.survtrace._model import SurvTRACE
+from hazardous.data._seer import CATEGORICAL_COLUMN_NAMES, NUMERIC_COLUMN_NAMES
 
 # from hazardous.utils import CumulativeIncidencePipeline
 
@@ -88,13 +84,18 @@ ESTIMATOR_GRID = {
 
 # Parameters of the make_synthetic_competing_weibull function.
 DATASET_GRID = {
-    "n_events": [3, 5],
-    "n_samples": [1_000, 10_000, 20_000, 50_000, 200_000],
-    "censoring_relative_scale": [0.65, 0.8, 1.5, 2.5],
-    "complex_features": [True, False],
-    "independent_censoring": [False, True],
-    "n_features": [10, 20, 40],
+    "weibull": {
+        "n_events": [3],
+        "n_samples": [1_000, 5_000, 10_000, 20_000, 50_000],
+        "censoring_relative_scale": [0.8, 1.5, 2.5],
+        "complex_features": [True],
+        "independent_censoring": [True, False],
+    },
+    "seer": {
+        "n_samples": [50_000, 100_000, 300_000],
+    },
 }
+
 
 PATH_DAILY_SESSION = Path(datetime.now().strftime("%Y-%m-%d"))
 
@@ -105,68 +106,65 @@ N_JOBS_CV = 15
 N_ITER_CV = 10
 
 
-def run_all_synthetic_datasets(estimator_name):
-    grid_dataset_params = list(product(*DATASET_GRID.values()))
+def run_all_datasets(dataset_name, estimator_name):
+    dataset_grid = DATASET_GRID[dataset_name]
+    grid_dataset_params = list(product(*dataset_grid.values()))
 
+    run_fn = {
+        "seer": run_seer,
+        "weibull": run_synthetic_dataset,
+    }[dataset_name]
+
+    # deactivate parallelization on dataset params to avoid
+    # nested parallelism and threads oversubscription.
     parallel = Parallel(n_jobs=None)
     parallel(
-        delayed(run_synthetic_dataset)(estimator_name, dataset_params)
+        delayed(run_fn)(dataset_params, estimator_name)
         for dataset_params in grid_dataset_params
     )
 
 
-def run_synthetic_dataset(estimator_name, dataset_params):
-    dataset_params = dict(zip(DATASET_GRID.keys(), dataset_params))
-    data_bunch = make_synthetic_competing_weibull(
-        **dataset_params, feature_rounding=None, target_rounding=None
-    )
+def run_synthetic_dataset(dataset_params, estimator_name):
+    dataset_grid = DATASET_GRID["weibull"]
+    dataset_params = dict(zip(dataset_grid.keys(), dataset_params))
 
-    print(f"{estimator_name}\n{dataset_params}")
-
-    if estimator_name == "fine_and_gray" and dataset_params["n_samples"] > 10_000:
-        print("SKIP")
-        return
-
+    data_bunch = make_synthetic_competing_weibull(**dataset_params)
     run_estimator(
         estimator_name,
         data_bunch,
         dataset_name="weibull",
-        dataset_params=dataset_params,
+        dataser_params=dataset_params,
     )
 
 
-def run_real_dataset(estimator_name, dataset_name="seer"):
-    if dataset_name == "seer":
-        data_bunch = load_seer(
-            SEER_PATH,
-            survtrace_preprocessing=True,
-            return_X_y=False,
-        )
-        X, y = data_bunch.X, data_bunch.y
+def run_seer(dataset_params, estimator_name):
+    dataset_grid = DATASET_GRID["seer"]
+    dataset_params = dict(zip(dataset_grid.keys(), dataset_params))
 
-    elif dataset_name == "churn":
-        churn_data = pd.read_csv(CHURN_PATH)
-        X, y = churn_data[["months_active"]], churn_data["churned"]
-        data_bunch = Bunch(X=X, y=y)
+    data_bunch = load_seer(
+        SEER_PATH,
+        survtrace_preprocessing=True,
+        return_X_y=False,
+    )
+    X, y = data_bunch.X, data_bunch.y
+    column_names = CATEGORICAL_COLUMN_NAMES + NUMERIC_COLUMN_NAMES
+    data_bunch.X = data_bunch.X[column_names]
 
-    else:
-        raise ValueError(f"Unknown dataset name: {dataset_name}")
+    n_samples = dataset_params["n_samples"]
+    X = X.sample(n_samples, random_state=SEED)
+    y = y.iloc[X.index]
 
-    X_train_, _, y_train_, _ = train_test_split(X, y, test_size=0.3, random_state=SEED)
-    SAMPLES_RATIO = [0.1, 0.3, 0.5, 0.7, 1.0]
-    for samples_ratio in SAMPLES_RATIO:
-        idx_train = np.random.choice(
-            len(X_train_), int(len(X_train_) * samples_ratio), replace=False
-        )
-        X_train, y_train = X_train_.iloc[idx_train], y_train_.iloc[idx_train]
-        data_bunch.X, data_bunch.y = X_train, y_train
+    X, y = X.reset_index(drop=True), y.reset_index(drop=True)
 
-        run_estimator(
-            estimator_name,
-            data_bunch,
-            dataset_name=dataset_name,
-            dataset_params={"samples_ratio": samples_ratio},
-        )
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3, random_state=SEED)
+    data_bunch.X, data_bunch.y = X_train, y_train
+
+    run_estimator(
+        estimator_name,
+        data_bunch,
+        dataset_name="seer",
+        dataset_params={},
+    )
 
 
 def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
@@ -178,13 +176,12 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     estimator = ESTIMATOR_GRID[estimator_name]["estimator"]
     param_grid = ESTIMATOR_GRID[estimator_name]["param_grid"]
 
-    hp_search = RandomizedSearchCV(
+    hp_search = GridSearchCV(
         estimator,
         param_grid,
-        cv=3,
+        cv=StratifiedKFold(n_splits=3),
         return_train_score=True,
-        n_iter=N_ITER_CV,
-        n_jobs=N_JOBS_CV,
+        refit=True,
     )
     hp_search.fit(
         X,
@@ -192,6 +189,8 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     )
 
     best_params = hp_search.best_params_
+
+    # With refit=True, the best estimator is already fitted on X, y.
     best_estimator = hp_search.best_estimator_
 
     cols = [
@@ -208,8 +207,6 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     best_results = best_results.iloc[hp_search.best_index_].to_dict()
     best_results["estimator_name"] = estimator_name
 
-    best_estimator.fit(X, y)
-
     # hack for benchmarks
     best_estimator.y_train = y
 
@@ -225,5 +222,4 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
 
 
 if __name__ == "__main__":
-    run_all_synthetic_datasets("fine_and_gray")
-    run_all_synthetic_datasets("aalen_johansen")
+    run_all_datasets("fine_and_gray")
