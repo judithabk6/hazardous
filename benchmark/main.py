@@ -7,6 +7,8 @@ import pandas as pd
 
 from joblib import delayed, Parallel, dump
 from scipy.stats import loguniform, randint
+from sklearn.preprocessing import OrdinalEncoder
+from sklearn.pipeline import Pipeline
 from sklearn.model_selection import (
     RandomizedSearchCV,
     train_test_split,
@@ -30,8 +32,18 @@ SEED = 0
 # Enable oracle scoring for GridSearchCV
 # GBMI.set_score_request(scale=True, shape=True)
 
-gbmi_competing_loss = GBMultiIncidence(loss="competing_risks", show_progressbar=True)
-gbmi_log_loss = GBMultiIncidence(loss="inll", show_progressbar=True)
+gbmi_competing_loss = Pipeline(
+    [
+        ("encoder", OrdinalEncoder()),
+        ("estimator", GBMultiIncidence(loss="competing_risks", show_progressbar=True)),
+    ]
+)
+gbmi_log_loss = Pipeline(
+    [
+        ("encoder", OrdinalEncoder()),
+        ("estimator", GBMultiIncidence(loss="inll", show_progressbar=True)),
+    ]
+)
 
 # deephit = _DeepHit(
 #   num_nodes_shared=[64, 64],
@@ -47,11 +59,11 @@ aalen_johansen = AalenJohansenEstimator(calculate_variance=False, seed=SEED)
 survtrace = SurvTRACE(device="cpu", max_epochs=30)
 
 gbmi_param_grid = {
-    "learning_rate": loguniform(0.01, 0.5),
-    "max_depth": randint(2, 10),
-    "n_iter": randint(20, 200),
-    "n_times": randint(1, 5),
-    "n_iter_before_feedback": randint(20, 50),
+    "estimator__learning_rate": loguniform(0.01, 0.5),
+    "estimator__max_depth": randint(2, 10),
+    "estimator__n_iter": randint(20, 200),
+    "estimator__n_times": randint(1, 5),
+    "estimator__n_iter_before_feedback": randint(20, 50),
 }
 
 survtrace_grid = {
@@ -141,7 +153,7 @@ def run_seer(dataset_params, estimator_name):
 
     data_bunch = load_seer(
         SEER_PATH,
-        survtrace_preprocessing=True,
+        survtrace_preprocessing=False,
         return_X_y=False,
     )
     X, y = data_bunch.X, data_bunch.y
@@ -224,5 +236,5 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
 
 
 # %%
-run_all_datasets("seer", "survtrace")
+run_all_datasets("seer", "gbmi_competing_loss")
 # %%
