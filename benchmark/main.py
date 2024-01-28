@@ -10,7 +10,7 @@ from scipy.stats import loguniform, randint
 from sklearn.model_selection import (
     RandomizedSearchCV,
     train_test_split,
-    StratifiedKFold,
+    # StratifiedKFold,
 )
 
 from hazardous.data._competing_weibull import make_synthetic_competing_weibull
@@ -57,9 +57,6 @@ gbmi_param_grid = {
 survtrace_grid = {
     "lr": loguniform(1e-5, 1e-3),
     "batch_size": [256, 512, 1024],
-    "hidden_size": [8, 16, 32, 64],
-    "num_hidden_layers": [2, 3, 4],
-    "intermediate_size": [64],
 }
 
 ESTIMATOR_GRID = {
@@ -155,7 +152,7 @@ def run_seer(dataset_params, estimator_name):
 
     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3, random_state=SEED)
     X_train = X_train.sample(n_samples, random_state=SEED)
-    y_train = y_train.iloc[X_train.index]
+    y_train = y_train.loc[X_train.index]
 
     X_train, y = X_train.reset_index(drop=True), y_train.reset_index(drop=True)
 
@@ -177,14 +174,14 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     # shape_censoring = data_bunch.shape_censoring
     estimator = ESTIMATOR_GRID[estimator_name]["estimator"]
     param_grid = ESTIMATOR_GRID[estimator_name]["param_grid"]
-    if dataset_name == "seer":
-        cv = StratifiedKFold(n_splits=3)
-    else:
-        cv = 3
+    # if dataset_name == "seer":
+    #     cv = StratifiedKFold(n_splits=3)
+    # else:
+    #     cv = 3
     hp_search = RandomizedSearchCV(
         estimator,
         param_grid,
-        cv=cv,
+        cv=3,
         return_train_score=True,
         refit=True,
     )
@@ -224,3 +221,8 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     dump(best_estimator, path_profile / "best_estimator.joblib")
     json.dump(best_results, open(path_profile / "cv_results.json", "w"))
     json.dump(dataset_params, open(path_profile / "dataset_params.json", "w"))
+
+
+# %%
+run_all_datasets("seer", "survtrace")
+# %%
