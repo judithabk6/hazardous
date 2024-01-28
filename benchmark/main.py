@@ -1,3 +1,4 @@
+# %%
 import json
 from pathlib import Path
 from itertools import product
@@ -6,7 +7,11 @@ import pandas as pd
 
 from joblib import delayed, Parallel, dump
 from scipy.stats import loguniform, randint
-from sklearn.model_selection import GridSearchCV, train_test_split, StratifiedKFold
+from sklearn.model_selection import (
+    RandomizedSearchCV,
+    train_test_split,
+    StratifiedKFold,
+)
 
 from hazardous.data._competing_weibull import make_synthetic_competing_weibull
 from hazardous.data._seer import load_seer
@@ -58,19 +63,15 @@ survtrace_grid = {
 }
 
 ESTIMATOR_GRID = {
-    # "gbmi_competing_loss": {
-    #     "estimator": gbmi_competing_loss,
-    #     "param_grid": gbmi_param_grid,
-    # },
-    # "gbmi_log_loss": {
-    #     "estimator": gbmi_log_loss,
-    #     "param_grid": gbmi_param_grid,
-    # },
-    # "survtrace":{
-    #     "estimator": survtrace,
-    #     "param_grid": survtrace_grid
-    #     }
-    # }
+    "gbmi_competing_loss": {
+        "estimator": gbmi_competing_loss,
+        "param_grid": gbmi_param_grid,
+    },
+    "gbmi_log_loss": {
+        "estimator": gbmi_log_loss,
+        "param_grid": gbmi_param_grid,
+    },
+    "survtrace": {"estimator": survtrace, "param_grid": survtrace_grid},
     "fine_and_gray": {
         "estimator": fine_and_gray,
         "param_grid": {},
@@ -133,7 +134,7 @@ def run_synthetic_dataset(dataset_params, estimator_name):
         estimator_name,
         data_bunch,
         dataset_name="weibull",
-        dataser_params=dataset_params,
+        dataset_params=dataset_params,
     )
 
 
@@ -151,12 +152,13 @@ def run_seer(dataset_params, estimator_name):
     data_bunch.X = data_bunch.X[column_names]
 
     n_samples = dataset_params["n_samples"]
-    X = X.sample(n_samples, random_state=SEED)
-    y = y.iloc[X.index]
-
-    X, y = X.reset_index(drop=True), y.reset_index(drop=True)
 
     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3, random_state=SEED)
+    X_train = X_train.sample(n_samples, random_state=SEED)
+    y_train = y_train.iloc[X_train.index]
+
+    X_train, y = X_train.reset_index(drop=True), y_train.reset_index(drop=True)
+
     data_bunch.X, data_bunch.y = X_train, y_train
 
     run_estimator(
@@ -175,11 +177,14 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     # shape_censoring = data_bunch.shape_censoring
     estimator = ESTIMATOR_GRID[estimator_name]["estimator"]
     param_grid = ESTIMATOR_GRID[estimator_name]["param_grid"]
-
-    hp_search = GridSearchCV(
+    if dataset_name == "seer":
+        cv = StratifiedKFold(n_splits=3)
+    else:
+        cv = 3
+    hp_search = RandomizedSearchCV(
         estimator,
         param_grid,
-        cv=StratifiedKFold(n_splits=3),
+        cv=cv,
         return_train_score=True,
         refit=True,
     )
@@ -219,7 +224,3 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     dump(best_estimator, path_profile / "best_estimator.joblib")
     json.dump(best_results, open(path_profile / "cv_results.json", "w"))
     json.dump(dataset_params, open(path_profile / "dataset_params.json", "w"))
-
-
-if __name__ == "__main__":
-    run_all_datasets("fine_and_gray")
