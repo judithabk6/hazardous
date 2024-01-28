@@ -10,8 +10,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from skorch import NeuralNet
-from skorch.callbacks import Callback, EarlyStopping, ProgressBar
-from skorch.dataset import ValidSplit, unpack_data
+from skorch.callbacks import Callback, ProgressBar  # , EarlyStopping
+from skorch.dataset import unpack_data  # , ValidSplit
 from torch.optim import Adam
 
 from hazardous.utils import get_n_events
@@ -86,10 +86,10 @@ class SurvTRACE(NeuralNet):
         if optimizer is None:
             optimizer = Adam
 
-        if train_split is None:
-            # 10% of the dataset is used for validation.
-            train_split = ValidSplit(0.1, stratified=True)
-
+        # if train_split is None:
+        # 10% of the dataset is used for validation.
+        # train_split = ValidSplit(0.3, stratified=True)
+        #    train_split = ValidSplit(0.5, stratified=True)
         # Skorch hack 2: this allows to use ShapeSetter on nested modules
         # in initialize_module().
         self._modules = ["module", "embeddings", "cls"]
@@ -100,7 +100,7 @@ class SurvTRACE(NeuralNet):
             callbacks = [
                 ShapeSetter(),
                 ProgressBar(detect_notebook=False),
-                EarlyStopping(monitor="valid_loss", patience=3, threshold=0.001),
+                # EarlyStopping(monitor="valid_loss", patience=3, threshold=0.001),
             ]
 
         super().__init__(
