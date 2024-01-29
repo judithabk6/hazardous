@@ -12,15 +12,15 @@ from display_utils import (
     aggregate_result,
     load_dataset,
     make_query,
-    make_time_grid,
     get_estimator,
 )
+from hazardous.utils import make_time_grid
 
 sns.set_style(style="white")
 sns.set_context("paper")
 plt.style.use("seaborn-v0_8-talk")
 
-USER = "vincentmaladiere"
+USER = "jalberge"
 DATASET_NAME = "weibull"
 SEEDS = {
     "weibull": list(range(5)),
@@ -127,9 +127,18 @@ def plot_ibs_vs_x(results, data_params, x_col, x_label, filename):
     fig.savefig(file_path, format="pdf")
 
 
-path_session_dataset = Path("2024-01-15") / DATASET_NAME
-estimator_names = ["gbmi_10", "gbmi_20"]
+path_session_dataset = Path("all_we") / DATASET_NAME
+estimator_names = [
+    "gbmi_competing_loss",
+    "gbmi_log_loss",
+    "survtrace",
+    "aalen_johansen",
+    "fine_and_gray",
+]
 results = aggregate_result(path_session_dataset, estimator_names)
+
+
+# %%
 
 data_params = dict(
     n_events=3,
@@ -145,6 +154,7 @@ plot_ibs_vs_x(
     filename="ibs_samples",
 )
 
+# %%
 data_params = dict(
     n_events=3,
     independent_censoring=True,
@@ -159,4 +169,6 @@ plot_ibs_vs_x(
     filename="ibs_censoring",
 )
 
+# %%
+print("hello")
 # %%

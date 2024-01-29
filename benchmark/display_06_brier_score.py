@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from hazardous.metrics._brier_score import (
     brier_score_incidence,
 )
-from hazardous._aalan_johansen import AalenJohansenEstimator
+from hazardous._aalen_johansen import AalenJohansenEstimator
 from display_utils import (
     aggregate_result,
     get_estimator,

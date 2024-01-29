@@ -9,6 +9,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy.interpolate import interp1d
+from sklearn.base import check_is_fitted
 from skorch import NeuralNet
 from skorch.callbacks import Callback, EarlyStopping, ProgressBar
 from skorch.dataset import ValidSplit, unpack_data
@@ -184,6 +186,7 @@ class SurvTRACE(NeuralNet):
                 )
                 y = self.target_encoder_.fit_transform(y)
 
+            self.event_ids_ = np.sort(y["event"].unique())
             y = y.to_dict(orient="list")  # A dict of list
             y["duration"] = torch.as_tensor(y["duration"], dtype=torch.long)
             y["event"] = torch.as_tensor(y["event"], dtype=torch.long)
@@ -322,14 +325,43 @@ class SurvTRACE(NeuralNet):
         return hazard.numpy()
 
     def predict_survival_function(self, X):
+        # times = time_grid
         hazard = self.predict_hazard(X)
         surv = np.exp(-hazard.cumsum(axis=2))
         return surv
 
-    def predict_cumulative_incidence(self, X):
+    def predict_cumulative_incidence(self, X, times=None):
         risks = 1 - self.predict_survival_function(X)
         surv = (1 - risks.sum(axis=0))[None, :, :]
-        return np.concatenate([surv, risks], axis=0)
+        y_pred = np.concatenate([surv, risks], axis=0)
+        del risks, surv
+
+        if times is not None:
+            time_grid = self.times_
+            all_event_y_pred = []
+            for event_id in self.event_ids_:
+                # Interpolate each sample
+                y_pred_event = y_pred[event_id]  # shape (n_samples, n_quantiles)
+
+                y_pred_t_max = y_pred_event[:, [-1]]
+                y_pred_event = np.hstack([y_pred_event, y_pred_t_max])
+
+                times_event = np.hstack([time_grid, [np.inf]])
+
+                all_y_pred = []
+                for idx in range(y_pred_event.shape[0]):
+                    y_pred_ = interp1d(
+                        x=times_event,
+                        y=y_pred_event[idx, :],
+                        kind="linear",
+                    )(times)
+                    all_y_pred.append(y_pred_)
+
+                y_pred_event = np.vstack(all_y_pred)
+                all_event_y_pred.append(y_pred_event)
+            y_pred = np.asarray(all_event_y_pred)
+
+        return y_pred
 
     def score(self, X, y):
         y_pred = self.predict(X)
@@ -347,6 +379,11 @@ class SurvTRACE(NeuralNet):
                 loss += self.get_loss(y_pred_event, y_true, X=X, training=False)
 
             return -loss
+
+    @property
+    def times_(self):
+        check_is_fitted(self, "target_encoder_")
+        return self.target_encoder_.time_grid_
 
 
 class _SurvTRACEModule(nn.Module):

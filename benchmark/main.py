@@ -22,7 +22,7 @@ from hazardous._gb_multi_incidence import GBMultiIncidence
 # from hazardous.survtrace._encoder import SurvFeatureEncoder
 # from hazardous._deep_hit import _DeepHit
 from hazardous._fine_and_gray import FineGrayEstimator
-from hazardous._aalen_johasen import AalenJohansenEstimator
+from hazardous._aalen_johansen import AalenJohansenEstimator
 from hazardous.survtrace._model import SurvTRACE
 from hazardous.data._seer import CATEGORICAL_COLUMN_NAMES, NUMERIC_COLUMN_NAMES
 
@@ -236,5 +236,5 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
 
 
 # %%
-run_all_datasets("seer", "gbmi_competing_loss")
+# run_all_datasets("seer", "gbmi_competing_loss")
 # %%

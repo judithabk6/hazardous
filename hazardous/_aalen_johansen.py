@@ -32,7 +32,7 @@ class AalenJohansenEstimator(BaseEstimator):
         self.calculate_variance = calculate_variance
         self.seed = seed
 
-    def fit(self, y):
+    def fit(self, X, y):
         """
         Parameters
         ----------
@@ -43,6 +43,7 @@ class AalenJohansenEstimator(BaseEstimator):
         -------
         self : fitted instance of FineGrayEstimator
         """
+        del X
         self._check_input(y)
         event, duration = check_y_survival(y)
 
@@ -58,6 +59,7 @@ class AalenJohansenEstimator(BaseEstimator):
 
             self.aj_fitter_events_.append(aj_fitter_event)
 
+        self.y_train = y
         return self
 
     def predict_cumulative_incidence(self, X, times=None):

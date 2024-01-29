@@ -88,6 +88,11 @@ def get_n_events(event):
     return len(event_ids) - has_censoring
 
 
+def make_time_grid(duration, n_steps=100):
+    t_min, t_max = duration.min(), duration.max()
+    return np.linspace(t_min, t_max, n_steps)
+
+
 class SurvStratifiedKFold(StratifiedKFold):
     def split(self, X, y, groups=None):
         event, _ = check_y_survival(y)

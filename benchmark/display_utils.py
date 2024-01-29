@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
 import seaborn as sns
 from joblib import load
 from sklearn.model_selection import train_test_split
@@ -59,11 +58,6 @@ def load_dataset(dataset_name, data_params, random_state=None):
         return bunch
     else:
         raise ValueError(f"Got {dataset_name} instead of ('seer', 'weibull').")
-
-
-def make_time_grid(duration, n_steps=100):
-    t_min, t_max = duration.min(), duration.max()
-    return np.linspace(t_min, t_max, n_steps)
 
 
 def make_query(data_params):
