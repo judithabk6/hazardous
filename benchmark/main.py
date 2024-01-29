@@ -12,11 +12,14 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import (
     RandomizedSearchCV,
     train_test_split,
-    # StratifiedKFold,
 )
 
 from hazardous.data._competing_weibull import make_synthetic_competing_weibull
-from hazardous.data._seer import load_seer
+from hazardous.data._seer import (
+    load_seer,
+    CATEGORICAL_COLUMN_NAMES,
+    NUMERIC_COLUMN_NAMES,
+)
 from hazardous._gb_multi_incidence import GBMultiIncidence
 
 # from hazardous.survtrace._encoder import SurvFeatureEncoder
@@ -24,7 +27,10 @@ from hazardous._gb_multi_incidence import GBMultiIncidence
 from hazardous._fine_and_gray import FineGrayEstimator
 from hazardous._aalen_johansen import AalenJohansenEstimator
 from hazardous.survtrace._model import SurvTRACE
-from hazardous.data._seer import CATEGORICAL_COLUMN_NAMES, NUMERIC_COLUMN_NAMES
+from hazardous.utils import (
+    SurvStratifiedKFold,
+    SurvStratifiedSingleSplit,
+)
 
 # from hazardous.utils import CumulativeIncidencePipeline
 
@@ -174,7 +180,7 @@ def run_seer(dataset_params, estimator_name):
         estimator_name,
         data_bunch,
         dataset_name="seer",
-        dataset_params={},
+        dataset_params=dataset_params,
     )
 
 
@@ -186,14 +192,16 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     # shape_censoring = data_bunch.shape_censoring
     estimator = ESTIMATOR_GRID[estimator_name]["estimator"]
     param_grid = ESTIMATOR_GRID[estimator_name]["param_grid"]
-    # if dataset_name == "seer":
-    #     cv = StratifiedKFold(n_splits=3)
-    # else:
-    #     cv = 3
+
+    if estimator_name == "survtrace":
+        cv = SurvStratifiedSingleSplit()
+    else:
+        cv = SurvStratifiedKFold(n_splits=3)
+
     hp_search = RandomizedSearchCV(
         estimator,
         param_grid,
-        cv=3,
+        cv=cv,
         return_train_score=True,
         refit=True,
     )
@@ -235,6 +243,4 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     json.dump(dataset_params, open(path_profile / "dataset_params.json", "w"))
 
 
-# %%
-# run_all_datasets("seer", "gbmi_competing_loss")
 # %%
