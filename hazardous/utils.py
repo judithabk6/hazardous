@@ -63,7 +63,7 @@ def check_event_of_interest(k):
 
 
 class CumulativeIncidencePipeline(Pipeline):
-    def predict_cumulative_incidence(self, X, times):
+    def predict_cumulative_incidence(self, X, times=None):
         Xt = X
         for _, _, transformer in self._iter(with_final=False):
             Xt = transformer.transform(Xt)
