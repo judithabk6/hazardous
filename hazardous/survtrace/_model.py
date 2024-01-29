@@ -10,11 +10,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from skorch import NeuralNet
-from skorch.callbacks import Callback, ProgressBar  # , EarlyStopping
-from skorch.dataset import unpack_data  # , ValidSplit
+from skorch.callbacks import Callback, EarlyStopping, ProgressBar
+from skorch.dataset import ValidSplit, unpack_data
 from torch.optim import Adam
 
-from hazardous.utils import get_n_events
+from hazardous.utils import SurvStratifiedKFold, get_n_events
 
 from ._bert_layers import (
     DEFAULT_QUANTILE_HORIZONS,
@@ -27,7 +27,7 @@ from ._losses import NLLPCHazardLoss
 from ._utils import pad_col_3d
 
 
-# Skorch hack 1: this will properly set parameters at runtime using callbacks.
+# Skorch hack 2: this will properly set parameters at runtime using callbacks.
 # See: https://stackoverflow.com/a/60170023
 class ShapeSetter(Callback):
     def on_train_begin(self, net, X=None, y=None):
@@ -88,9 +88,10 @@ class SurvTRACE(NeuralNet):
 
         # if train_split is None:
         # 10% of the dataset is used for validation.
-        # train_split = ValidSplit(0.3, stratified=True)
-        #    train_split = ValidSplit(0.5, stratified=True)
-        # Skorch hack 2: this allows to use ShapeSetter on nested modules
+        if train_split is None:
+            train_split = ValidSplit(cv=SurvStratifiedKFold())
+
+        # Skorch hack 3: this allows to use ShapeSetter on nested modules
         # in initialize_module().
         self._modules = ["module", "embeddings", "cls"]
         self.embeddings_ = module.embeddings
@@ -100,7 +101,7 @@ class SurvTRACE(NeuralNet):
             callbacks = [
                 ShapeSetter(),
                 ProgressBar(detect_notebook=False),
-                # EarlyStopping(monitor="valid_loss", patience=3, threshold=0.001),
+                EarlyStopping(monitor="valid_loss", patience=2, threshold=0.001),
             ]
 
         super().__init__(
@@ -123,7 +124,7 @@ class SurvTRACE(NeuralNet):
         self.quantile_horizons = quantile_horizons
 
     def initialize_module(self):
-        """Skorch hack 3: set changed modules."""
+        """Skorch hack 4: set changed modules."""
         for module_name in self._modules:
             if module_name in ["cls", "embeddings"]:
                 kwargs = self.get_params_for(module_name)

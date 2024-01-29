@@ -1,7 +1,9 @@
 from numbers import Integral
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.utils.validation import check_scalar
 
@@ -23,6 +25,10 @@ def _dict_to_recarray(y, cast_event_to_bool=False):
 def check_y_survival(y):
     """Convert DataFrame and dictionnary to record array."""
     y_keys = ["event", "duration"]
+
+    if isinstance(y, np.ndarray) and not isinstance(y.dtype, Iterable):
+        # assumes event, then duration
+        return y[:, 0], y[:, 1]
 
     if (
         isinstance(y, np.ndarray)
@@ -80,3 +86,18 @@ def get_n_events(event):
     event_ids = event.unique()
     has_censoring = int(0 in event_ids)
     return len(event_ids) - has_censoring
+
+
+class SurvStratifiedKFold(StratifiedKFold):
+    def split(self, X, y, groups=None):
+        event, _ = check_y_survival(y)
+        return super().split(X, event, groups)
+
+
+class SurvStratifiedSingleSplit(SurvStratifiedKFold):
+    def split(self, X, y, groups=None):
+        train, test = next(iter(super().split(X, y, groups)))
+        yield train, test
+
+    def get_n_splits(self, X=None, y=None, groups=None):
+        return 1
