@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 from sklearn.compose import make_column_transformer
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 
 from hazardous.utils import check_y_survival
@@ -92,8 +94,13 @@ class SurvFeatureEncoder(TransformerMixin, BaseEstimator):
         del y
         X = self._check_num_categorical_columns(X)
 
+        encoder = make_pipeline(
+            SimpleImputer(strategy="most_frequent"),
+            CumulativeOrdinalEncoder(),
+        )
+
         self.col_transformer_ = make_column_transformer(
-            (CumulativeOrdinalEncoder(), self.categorical_columns_),
+            (encoder, self.categorical_columns_),
             (StandardScaler(), self.numeric_columns_),
             remainder="drop",
             verbose_feature_names_out=False,

@@ -7,8 +7,6 @@ import pandas as pd
 
 from joblib import delayed, Parallel, dump
 from scipy.stats import loguniform, randint
-from sklearn.preprocessing import OrdinalEncoder
-from sklearn.pipeline import Pipeline
 from sklearn.model_selection import (
     RandomizedSearchCV,
     train_test_split,
@@ -27,26 +25,26 @@ from hazardous._gb_multi_incidence import GBMultiIncidence
 from hazardous._fine_and_gray import FineGrayEstimator
 from hazardous._aalen_johansen import AalenJohansenEstimator
 from hazardous.survtrace._model import SurvTRACE
+from hazardous.survtrace._encoder import SurvFeatureEncoder
 from hazardous.utils import (
     SurvStratifiedKFold,
     SurvStratifiedSingleSplit,
+    CumulativeIncidencePipeline,
 )
-
-# from hazardous.utils import CumulativeIncidencePipeline
 
 SEED = 0
 # Enable oracle scoring for GridSearchCV
 # GBMI.set_score_request(scale=True, shape=True)
 
-gbmi_competing_loss = Pipeline(
+gbmi_competing_loss = CumulativeIncidencePipeline(
     [
-        ("encoder", OrdinalEncoder()),
+        ("encoder", SurvFeatureEncoder()),
         ("estimator", GBMultiIncidence(loss="competing_risks", show_progressbar=True)),
     ]
 )
-gbmi_log_loss = Pipeline(
+gbmi_log_loss = CumulativeIncidencePipeline(
     [
-        ("encoder", OrdinalEncoder()),
+        ("encoder", SurvFeatureEncoder()),
         ("estimator", GBMultiIncidence(loss="inll", show_progressbar=True)),
     ]
 )
@@ -62,7 +60,7 @@ gbmi_log_loss = Pipeline(
 
 fine_and_gray = FineGrayEstimator()
 aalen_johansen = AalenJohansenEstimator(calculate_variance=False, seed=SEED)
-survtrace = SurvTRACE(device="cpu", max_epochs=30)
+survtrace = SurvTRACE(max_epochs=30)
 
 gbmi_param_grid = {
     "estimator__learning_rate": loguniform(0.01, 0.5),
@@ -107,9 +105,7 @@ DATASET_GRID = {
         "complex_features": [True],
         "independent_censoring": [True, False],
     },
-    "seer": {
-        "n_samples": [50_000, 100_000, 300_000],
-    },
+    "seer": {"n_samples": [100_000]},  # , 100_000, 300_000],
 }
 
 
@@ -166,9 +162,10 @@ def run_seer(dataset_params, estimator_name):
     column_names = CATEGORICAL_COLUMN_NAMES + NUMERIC_COLUMN_NAMES
     data_bunch.X = data_bunch.X[column_names]
 
-    n_samples = dataset_params["n_samples"]
-
     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3, random_state=SEED)
+
+    n_samples = min(dataset_params["n_samples"], X_train.shape[0])
+
     X_train = X_train.sample(n_samples, random_state=SEED)
     y_train = y_train.loc[X_train.index]
 
