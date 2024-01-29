@@ -52,7 +52,11 @@ def load_dataset(dataset_name, data_params, random_state=None):
             return_X_y=False,
         )
         _, X_test, _, y_test = train_test_split(
-            bunch.X, bunch.y, test_size=0.3, random_state=SEED
+            bunch.X,
+            bunch.y,
+            test_size=0.3,
+            stratify=bunch.y["event"],
+            random_state=SEED,
         )
         bunch.X, bunch.y = X_test, y_test
         return bunch

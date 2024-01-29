@@ -144,7 +144,6 @@ class FineGrayEstimator(BaseEstimator):
         self._check_feature_names(X, reset=True)
         self._check_n_features(X, reset=True)
 
-        y = y.loc[X.index]
         event, duration = check_y_survival(y)
         self.times_ = np.unique(duration[event > 0])
         self.event_ids_ = np.array(sorted(list(set([0]) | set(event))))

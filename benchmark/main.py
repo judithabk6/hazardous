@@ -5,7 +5,7 @@ from itertools import product
 from datetime import datetime
 import pandas as pd
 
-from joblib import delayed, Parallel, dump
+from joblib import dump
 from scipy.stats import loguniform, randint
 from sklearn.model_selection import (
     RandomizedSearchCV,
@@ -27,7 +27,7 @@ from hazardous._aalen_johansen import AalenJohansenEstimator
 from hazardous.survtrace._model import SurvTRACE
 from hazardous.survtrace._encoder import SurvFeatureEncoder
 from hazardous.utils import (
-    SurvStratifiedKFold,
+    SurvStratifiedShuffleSplit,
     SurvStratifiedSingleSplit,
     CumulativeIncidencePipeline,
 )
@@ -58,7 +58,9 @@ gbmi_log_loss = CumulativeIncidencePipeline(
 #    dropout=None,
 # )
 
-fine_and_gray = FineGrayEstimator()
+fine_and_gray = CumulativeIncidencePipeline(
+    [("encoder", SurvFeatureEncoder()), ("estimator", FineGrayEstimator())]
+)
 aalen_johansen = AalenJohansenEstimator(calculate_variance=False, seed=SEED)
 survtrace = SurvTRACE(max_epochs=30)
 
@@ -105,7 +107,7 @@ DATASET_GRID = {
         "complex_features": [True],
         "independent_censoring": [True, False],
     },
-    "seer": {"n_samples": [100_000]},  # , 100_000, 300_000],
+    "seer": {"n_samples": [None]},  # , 100_000, 300_000],
 }
 
 
@@ -114,8 +116,8 @@ PATH_DAILY_SESSION = Path(datetime.now().strftime("%Y-%m-%d"))
 SEER_PATH = "../hazardous/data/seer_cancer_cardio_raw_data.txt"
 CHURN_PATH = "../hazardous/data/churn.csv"
 SEED = 0
-N_JOBS_CV = 15
-N_ITER_CV = 10
+N_JOBS_CV = 5
+# N_ITER_CV = 10
 
 
 def run_all_datasets(dataset_name, estimator_name):
@@ -129,11 +131,13 @@ def run_all_datasets(dataset_name, estimator_name):
 
     # deactivate parallelization on dataset params to avoid
     # nested parallelism and threads oversubscription.
-    parallel = Parallel(n_jobs=None)
-    parallel(
-        delayed(run_fn)(dataset_params, estimator_name)
-        for dataset_params in grid_dataset_params
-    )
+    # parallel = Parallel(n_jobs=None)
+    # parallel(
+    #     delayed(run_fn)(dataset_params, estimator_name)
+    #     for dataset_params in grid_dataset_params
+    # )
+    for dataset_params in grid_dataset_params:
+        run_fn(dataset_params, estimator_name)
 
 
 def run_synthetic_dataset(dataset_params, estimator_name):
@@ -155,21 +159,30 @@ def run_seer(dataset_params, estimator_name):
 
     data_bunch = load_seer(
         SEER_PATH,
-        survtrace_preprocessing=False,
+        survtrace_preprocessing=True,
         return_X_y=False,
     )
     X, y = data_bunch.X, data_bunch.y
     column_names = CATEGORICAL_COLUMN_NAMES + NUMERIC_COLUMN_NAMES
     data_bunch.X = data_bunch.X[column_names]
 
-    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3, random_state=SEED)
+    X_train, _, y_train, _ = train_test_split(
+        X,
+        y,
+        test_size=0.3,
+        stratify=y["event"],
+        random_state=SEED,
+    )
 
-    n_samples = min(dataset_params["n_samples"], X_train.shape[0])
-
-    X_train = X_train.sample(n_samples, random_state=SEED)
-    y_train = y_train.loc[X_train.index]
-
-    X_train, y = X_train.reset_index(drop=True), y_train.reset_index(drop=True)
+    if dataset_params["n_samples"] is not None:
+        n_samples = min(dataset_params["n_samples"], X_train.shape[0])
+        X_train, _, y_train, _ = train_test_split(
+            X_train,
+            y_train,
+            train_size=n_samples,
+            stratify=y_train["event"],
+            random_state=SEED,
+        )
 
     data_bunch.X, data_bunch.y = X_train, y_train
 
@@ -191,16 +204,17 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     param_grid = ESTIMATOR_GRID[estimator_name]["param_grid"]
 
     if estimator_name == "survtrace":
-        cv = SurvStratifiedSingleSplit()
+        cv = SurvStratifiedSingleSplit(random_state=SEED)
     else:
-        cv = SurvStratifiedKFold(n_splits=3)
+        cv = SurvStratifiedShuffleSplit(n_splits=3, random_state=SEED)
 
     hp_search = RandomizedSearchCV(
         estimator,
         param_grid,
         cv=cv,
-        return_train_score=True,
+        return_train_score=False,
         refit=True,
+        n_jobs=N_JOBS_CV,
     )
     hp_search.fit(
         X,

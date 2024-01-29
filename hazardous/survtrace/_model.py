@@ -16,7 +16,7 @@ from skorch.callbacks import Callback, EarlyStopping, ProgressBar
 from skorch.dataset import ValidSplit, unpack_data
 from torch.optim import Adam
 
-from hazardous.utils import SurvStratifiedKFold, get_n_events
+from hazardous.utils import SurvStratifiedShuffleSplit, get_n_events
 
 from ._bert_layers import (
     DEFAULT_QUANTILE_HORIZONS,
@@ -77,6 +77,7 @@ class SurvTRACE(NeuralNet):
         device="cpu",
         max_epochs=100,
         iterator_valid__batch_size=10_000,
+        random_state=None,
         **kwargs,
     ):
         if module is None:
@@ -91,7 +92,10 @@ class SurvTRACE(NeuralNet):
         # if train_split is None:
         # 10% of the dataset is used for validation.
         if train_split is None:
-            train_split = ValidSplit(cv=SurvStratifiedKFold())
+            train_split = ValidSplit(
+                cv=SurvStratifiedShuffleSplit(random_state=random_state),
+                random_state=random_state,
+            )
 
         # Skorch hack 3: this allows to use ShapeSetter on nested modules
         # in initialize_module().

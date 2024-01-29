@@ -3,7 +3,7 @@ from typing import Iterable
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.pipeline import Pipeline
 from sklearn.utils.validation import check_scalar
 
@@ -93,13 +93,13 @@ def make_time_grid(duration, n_steps=100):
     return np.linspace(t_min, t_max, n_steps)
 
 
-class SurvStratifiedKFold(StratifiedKFold):
+class SurvStratifiedShuffleSplit(StratifiedShuffleSplit):
     def split(self, X, y, groups=None):
         event, _ = check_y_survival(y)
         return super().split(X, event, groups)
 
 
-class SurvStratifiedSingleSplit(SurvStratifiedKFold):
+class SurvStratifiedSingleSplit(SurvStratifiedShuffleSplit):
     def split(self, X, y, groups=None):
         train, test = next(iter(super().split(X, y, groups)))
         yield train, test

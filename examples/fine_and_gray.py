@@ -33,6 +33,34 @@ ax = sns.histplot(
 ax.set_title(f"{censoring_kind} censoring rate {censoring_rate:.2%}")
 
 # %%
+from sklearn.model_selection import train_test_split
+
+from hazardous.data._seer import load_seer
+from hazardous.survtrace._encoder import SurvFeatureEncoder
+from hazardous.utils import CumulativeIncidencePipeline
+from hazardous._fine_and_gray import FineGrayEstimator
+
+
+SEER_PATH = "../hazardous/data/seer_cancer_cardio_raw_data.txt"
+
+X, y = load_seer(
+    SEER_PATH,
+    survtrace_preprocessing=True,
+    return_X_y=True,
+)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y)
+
+fg = CumulativeIncidencePipeline(
+    [
+        ("encoder", SurvFeatureEncoder()),
+        ("estimator", FineGrayEstimator()),
+    ]
+)
+fg.fit(X_train, y_train)
+
+
+# %%
 from hazardous._fine_and_gray import FineGrayEstimator
 
 fg = FineGrayEstimator().fit(X, y)
