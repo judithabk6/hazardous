@@ -120,7 +120,7 @@ class SurvFeatureEncoder(TransformerMixin, BaseEstimator):
         check_is_fitted(self, "col_transformer_")
         if len(self.categorical_columns_) == 0:
             return 0
-        return self.col_transformer_.transformers_[0][1].vocab_size_
+        return self.col_transformer_.transformers_[0][1][1].vocab_size_
 
     def _check_num_categorical_columns(self, X):
         if not hasattr(X, "__dataframe__"):
