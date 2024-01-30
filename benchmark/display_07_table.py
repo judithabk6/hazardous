@@ -60,30 +60,30 @@ for estimator_name, df_est in df.groupby("estimator_name"):
 
 
 results = []
-event_multiclass_train = y_train["event"].copy()
-event_multiclass_test = y_test["event"].copy()
+y_multiclass_train = y_train.copy()
+y_multiclass_test = y_test.copy()
 
 for event_idx in range(n_events):
     print(f"Event {event_idx}")
 
-    y_train["event"] = event_multiclass_train == event_idx + 1
-    y_test["event"] = event_multiclass_test == event_idx + 1
+    y_train["event"] = (y_multiclass_train["event"] == (event_idx + 1)).astype("int32")
+
+    y_test["event"] = (y_multiclass_test["event"] == (event_idx + 1)).astype("int32")
 
     for estimator_name, y_pred in all_y_pred.items():
         ibs = integrated_brier_score_incidence(
-            y_train=y_train,
-            y_test=y_test,
+            y_train=y_multiclass_train,
+            y_test=y_multiclass_test,
             y_pred=y_pred[event_idx + 1],
             times=times,
             event_of_interest=event_idx + 1,
         )
         for time_idx, (time, quantile) in enumerate(zip(times, truncation_quantiles)):
             y_pred_at_t = y_pred[event_idx + 1][:, time_idx]
-            n_subsamples = 10_000
             ct_index, _, _, _, _ = concordance_index_ipcw(
-                y_train.head(n_subsamples),
-                y_test.head(n_subsamples),
-                y_pred_at_t[:n_subsamples],
+                y_train,
+                y_test,
+                y_pred_at_t,
                 tau=time,
             )
             results.append(
