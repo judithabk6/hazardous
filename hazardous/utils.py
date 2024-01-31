@@ -106,3 +106,12 @@ class SurvStratifiedSingleSplit(SurvStratifiedShuffleSplit):
 
     def get_n_splits(self, X=None, y=None, groups=None):
         return 1
+
+
+class SurvStratifiedShuffleSplit(SurvStratifiedKFold):
+    def split(self, X, y, groups=None):
+        train, test = next(iter(super().split(X, y, groups)))
+        yield train, test
+
+    def get_n_splits(self, X=None, y=None, groups=None):
+        return 1

@@ -24,15 +24,19 @@ sns.set_style(style="white")
 sns.set_context("paper")
 plt.style.use("seaborn-v0_8-talk")
 
-USER = "vincentmaladiere"
+USER = "jalberge"
 DATASET_NAME = "seer"
 SEER_PATH = "../hazardous/data/seer_cancer_cardio_raw_data.txt"
 SEED = 0
 
 
-path_session_dataset = Path("v1") / DATASET_NAME
-estimator_names = ["fine_and_gray", "gbmi_log_loss", "survtrace"]
+path_session_dataset = Path("2024-01-29") / DATASET_NAME
+estimator_names = ["gbmi_log_loss", "survtrace", "fine_and_gray"]
 df = aggregate_result(path_session_dataset, estimator_names)
+df["n_samples"] = df["estimator"].apply(lambda x: len(x.y_train))
+# df = df[df["n_samples"] == df["n_samples"].max()]
+# %%
+df = df.iloc[[1, 5, 2]]
 
 bunch = load_dataset(DATASET_NAME, data_params={}, random_state=SEED)
 X_test, y_test = bunch.X, bunch.y
@@ -50,7 +54,7 @@ aj = AalenJohansenEstimator(seed=SEED).fit(
 y_pred_aj = aj.predict_cumulative_incidence(X_test, times)
 
 
-all_y_pred = {"Aalen-Johansen": y_pred_aj}
+all_y_pred = {}
 for estimator_name, df_est in df.groupby("estimator_name"):
     print(estimator_name)
     estimator = get_estimator(df_est, estimator_name)

@@ -99,13 +99,29 @@ ESTIMATOR_GRID = {
 
 
 # Parameters of the make_synthetic_competing_weibull function.
+# DATASET_GRID = {
+#     "weibull": {
+#         "n_events": [3],
+#         "n_samples": [1_000, 5_000, 10_000, 20_000, 50_000],
+#         "censoring_relative_scale": [0.8, 1.5, 2.5],
+#         "complex_features": [True],
+#         "independent_censoring": [True, False],
+#     },
+#     "seer": {
+#         "n_samples": [50_000, 100_000, 300_000],
+#     },
+# }
+
 DATASET_GRID = {
     "weibull": {
         "n_events": [3],
-        "n_samples": [1_000, 5_000, 10_000, 20_000, 50_000],
-        "censoring_relative_scale": [0.8, 1.5, 2.5],
+        "n_samples": [1_000, 5_000, 10_000, 20_000],
+        "censoring_relative_scale": [1.5],
         "complex_features": [True],
-        "independent_censoring": [True, False],
+        "independent_censoring": [False],
+    },
+    "seer": {
+        "n_samples": [50_000],
     },
     "seer": {"n_samples": [None]},  # , 100_000, 300_000],
 }
@@ -156,6 +172,7 @@ def run_synthetic_dataset(dataset_params, estimator_name):
 def run_seer(dataset_params, estimator_name):
     dataset_grid = DATASET_GRID["seer"]
     dataset_params = dict(zip(dataset_grid.keys(), dataset_params))
+    print(dataset_params)
 
     data_bunch = load_seer(
         SEER_PATH,
@@ -254,4 +271,6 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     json.dump(dataset_params, open(path_profile / "dataset_params.json", "w"))
 
 
+# %%
+# run_all_datasets("seer", "gbmi_log_loss")
 # %%

@@ -15,7 +15,7 @@ bunch = make_synthetic_competing_weibull(
     return_X_y=False,
     independent_censoring=independent_censoring,
     target_rounding=0,
-    censoring_relative_scale=1.5,
+    censoring_relative_scale=0.8,
     random_state=seed,
     complex_features=complex_features,
 )
@@ -28,7 +28,7 @@ ax = sns.histplot(
     x="duration",
     hue="event",
     multiple="stack",
-    palette="magma",
+    palette="colorblind",
 )
 ax.set_title(f"{censoring_kind} censoring rate {censoring_rate:.2%}")
 
@@ -49,19 +49,36 @@ X, y = load_seer(
 X = X[NUMERIC_COLUMN_NAMES + CATEGORICAL_COLUMN_NAMES]
 
 # %%
+y["Event"] = y["event"].replace(
+    {0: "Censored", 1: "Breast Cancer", 2: "Cardio Vascular Event", 3: "Other events"}
+)
 
-censoring_rate = (y["event"] == 0).mean()
+# %%
+y["event"] = y["event"].replace({1: 3, 3: 1})
+# %%
+
+y = y.sort_values("event")
+
+# %%
+len(y)
+# %%
+print((y["event"] == 0).mean())
+# %%
+sns.set_style(style="white")
+sns.set_context("paper")
+plt.style.use("seaborn-v0_8-talk")
+
+censoring_rate = (y["Event"] == "Censored").mean()
+fig, ax = plt.subplots(figsize=(6, 4))
+
 ax = sns.histplot(
     y,
     x="duration",
-    hue="event",
+    hue="Event",
     multiple="stack",
-    palette="magma",
+    palette="colorblind",
 )
-ax.set_title(f"Censoring rate {censoring_rate:.2%}")
-
-print(X.isna().sum())
-
+plt.savefig("seer.pdf", format="pdf", dpi=300, bbox_inches="tight")
 # %%
 
 from sklearn.model_selection import train_test_split

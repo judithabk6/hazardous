@@ -26,6 +26,8 @@ def aggregate_result(path_session_dataset, estimator_names):
         raise ValueError(f"{path_session_dataset} doesn't exist.")
 
     for path_profile in Path(path_session_dataset).glob("*"):
+        if str(path_profile).endswith(".DS_Store"):
+            continue
         results = json.load(open(path_profile / "cv_results.json"))
         estimator_name = results["estimator_name"]
         if estimator_name in estimator_names:

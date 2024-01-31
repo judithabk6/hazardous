@@ -108,7 +108,7 @@ ax.legend()
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 
-from hazardous._aalan_johansen import AalenJohansenEstimator
+from hazardous._aalen_johansen import AalenJohansenEstimator
 
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=seed)
