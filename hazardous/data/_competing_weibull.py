@@ -97,8 +97,8 @@ def _censor(
             features_rate=features_censoring_rate,
             n_events=1,
             degree_interaction=2,
-            shape_ranges=[(0.1, 20.0)],
-            scale_ranges=[(0.5, 1.5)],
+            shape_ranges=[(0.1, 7.0)],
+            scale_ranges=[(0.5, 2.5)],
             random_state=random_state,
         )
         SS_star.columns = ["shape_0", "scale_0"]

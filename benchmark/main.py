@@ -11,6 +11,8 @@ from sklearn.model_selection import (
     RandomizedSearchCV,
     train_test_split,
 )
+from sklearn.utils import Bunch
+from pycox.datasets import support, metabric
 
 from hazardous.data._competing_weibull import make_synthetic_competing_weibull
 from hazardous.data._seer import (
@@ -28,7 +30,6 @@ from hazardous.survtrace._model import SurvTRACE
 from hazardous.survtrace._encoder import SurvFeatureEncoder
 from hazardous.utils import (
     SurvStratifiedShuffleSplit,
-    SurvStratifiedSingleSplit,
     CumulativeIncidencePipeline,
 )
 
@@ -45,7 +46,13 @@ gbmi_competing_loss = CumulativeIncidencePipeline(
 gbmi_log_loss = CumulativeIncidencePipeline(
     [
         ("encoder", SurvFeatureEncoder()),
-        ("estimator", GBMultiIncidence(loss="inll", show_progressbar=True)),
+        (
+            "estimator",
+            GBMultiIncidence(
+                loss="inll",
+                show_progressbar=True,
+            ),
+        ),
     ]
 )
 
@@ -62,14 +69,14 @@ fine_and_gray = CumulativeIncidencePipeline(
     [("encoder", SurvFeatureEncoder()), ("estimator", FineGrayEstimator())]
 )
 aalen_johansen = AalenJohansenEstimator(calculate_variance=False, seed=SEED)
-survtrace = SurvTRACE(max_epochs=30)
+survtrace = SurvTRACE(batch_size=128, optimizer__weight_decay=0, lr=1e-3, max_epochs=20)
 
 gbmi_param_grid = {
-    "estimator__learning_rate": loguniform(0.01, 0.5),
+    "estimator__learning_rate": loguniform(0.01, 0.1),
     "estimator__max_depth": randint(2, 10),
-    "estimator__n_iter": randint(20, 200),
+    "estimator__n_iter": randint(5, 50),
     "estimator__n_times": randint(1, 5),
-    "estimator__n_iter_before_feedback": randint(20, 50),
+    "estimator__n_iter_before_feedback": randint(5, 50),
 }
 
 survtrace_grid = {
@@ -121,9 +128,17 @@ DATASET_GRID = {
         "independent_censoring": [False],
     },
     "seer": {
-        "n_samples": [50_000],
+        "n_samples": [50_000, 100_000, None],
+        "seed": list(range(5)),
+    },  # , 100_000, 300_000],
+    "metabric": {
+        "n_samples": [None],
+        "seed": list(range(5)),
     },
-    "seer": {"n_samples": [None]},  # , 100_000, 300_000],
+    "support": {
+        "n_samples": [None],
+        "seed": list(range(5)),
+    },
 }
 
 
@@ -131,8 +146,8 @@ PATH_DAILY_SESSION = Path(datetime.now().strftime("%Y-%m-%d"))
 
 SEER_PATH = "../hazardous/data/seer_cancer_cardio_raw_data.txt"
 CHURN_PATH = "../hazardous/data/churn.csv"
-SEED = 0
-N_JOBS_CV = 5
+N_JOBS_CV = 1
+SEARCH_HP = False
 # N_ITER_CV = 10
 
 
@@ -143,6 +158,8 @@ def run_all_datasets(dataset_name, estimator_name):
     run_fn = {
         "seer": run_seer,
         "weibull": run_synthetic_dataset,
+        "metabric": run_surv_dataset,
+        "support": run_surv_dataset,
     }[dataset_name]
 
     # deactivate parallelization on dataset params to avoid
@@ -153,10 +170,11 @@ def run_all_datasets(dataset_name, estimator_name):
     #     for dataset_params in grid_dataset_params
     # )
     for dataset_params in grid_dataset_params:
-        run_fn(dataset_params, estimator_name)
+        run_fn(dataset_params, estimator_name, dataset_name=dataset_name)
 
 
-def run_synthetic_dataset(dataset_params, estimator_name):
+def run_synthetic_dataset(dataset_params, estimator_name, dataset_name="weibull"):
+    del dataset_name
     dataset_grid = DATASET_GRID["weibull"]
     dataset_params = dict(zip(dataset_grid.keys(), dataset_params))
 
@@ -169,7 +187,8 @@ def run_synthetic_dataset(dataset_params, estimator_name):
     )
 
 
-def run_seer(dataset_params, estimator_name):
+def run_seer(dataset_params, estimator_name, dataset_name="seer"):
+    del dataset_name
     dataset_grid = DATASET_GRID["seer"]
     dataset_params = dict(zip(dataset_grid.keys(), dataset_params))
     print(dataset_params)
@@ -183,12 +202,14 @@ def run_seer(dataset_params, estimator_name):
     column_names = CATEGORICAL_COLUMN_NAMES + NUMERIC_COLUMN_NAMES
     data_bunch.X = data_bunch.X[column_names]
 
+    seed = dataset_params.get("seed", None) or SEED
+
     X_train, _, y_train, _ = train_test_split(
         X,
         y,
         test_size=0.3,
         stratify=y["event"],
-        random_state=SEED,
+        random_state=seed,
     )
 
     if dataset_params["n_samples"] is not None:
@@ -198,7 +219,7 @@ def run_seer(dataset_params, estimator_name):
             y_train,
             train_size=n_samples,
             stratify=y_train["event"],
-            random_state=SEED,
+            random_state=seed,
         )
 
     data_bunch.X, data_bunch.y = X_train, y_train
@@ -207,6 +228,58 @@ def run_seer(dataset_params, estimator_name):
         estimator_name,
         data_bunch,
         dataset_name="seer",
+        dataset_params=dataset_params,
+    )
+
+
+def run_surv_dataset(dataset_params, estimator_name, dataset_name="metabric"):
+    dataset_grid = DATASET_GRID[dataset_name]
+    dataset_params = dict(zip(dataset_grid.keys(), dataset_params))
+    print(dataset_params)
+
+    if dataset_name == "metabric":
+        df = metabric.read_df()
+        categorical_features = ["x4", "x5", "x6", "x7"]
+        numerical_features = ["x0", "x1", "x2", "x3", "x8"]
+    elif dataset_name == "support":
+        df = support.read_df()
+        categorical_features = ["x1", "x2", "x3", "x4", "x5", "x6"]
+        numerical_features = ["x0", "x7", "x8", "x9", "x10", "x11", "x12", "x13"]
+    else:
+        raise ValueError(f"Unknown dataset_name: {dataset_name}")
+
+    X = df.drop(columns=["duration", "event"])
+    X[categorical_features] = X[categorical_features].astype("category")
+    X[numerical_features] = X[numerical_features].astype("float64")
+
+    y = df[["duration", "event"]]
+
+    seed = dataset_params.get("seed", None) or SEED
+
+    X_train, _, y_train, _ = train_test_split(
+        X,
+        y,
+        test_size=0.3,
+        stratify=y["event"],
+        random_state=seed,
+    )
+
+    if dataset_params["n_samples"] is not None:
+        n_samples = min(dataset_params["n_samples"], X_train.shape[0])
+        X_train, _, y_train, _ = train_test_split(
+            X_train,
+            y_train,
+            train_size=n_samples,
+            stratify=y_train["event"],
+            random_state=seed,
+        )
+
+    data_bunch = Bunch(X=X_train, y=y_train)
+
+    run_estimator(
+        estimator_name,
+        data_bunch,
+        dataset_name=dataset_name,
         dataset_params=dataset_params,
     )
 
@@ -220,10 +293,13 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     estimator = ESTIMATOR_GRID[estimator_name]["estimator"]
     param_grid = ESTIMATOR_GRID[estimator_name]["param_grid"]
 
-    if estimator_name == "survtrace":
-        cv = SurvStratifiedSingleSplit(random_state=SEED)
+    if estimator_name == "survtrace" or not SEARCH_HP:
+        cv = SurvStratifiedShuffleSplit()
     else:
-        cv = SurvStratifiedShuffleSplit(n_splits=3, random_state=SEED)
+        cv = SurvStratifiedShuffleSplit(n_splits=3)
+
+    if not SEARCH_HP:
+        param_grid = {}
 
     hp_search = RandomizedSearchCV(
         estimator,
@@ -231,7 +307,8 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
         cv=cv,
         return_train_score=False,
         refit=True,
-        n_jobs=N_JOBS_CV,
+        n_jobs=1,
+        n_iter=20,
     )
     hp_search.fit(
         X,
@@ -246,8 +323,6 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
     cols = [
         "mean_test_score",
         "std_test_score",
-        "mean_train_score",
-        "std_train_score",
         "mean_fit_time",
         "std_fit_time",
         "mean_score_time",
@@ -272,5 +347,12 @@ def run_estimator(estimator_name, data_bunch, dataset_name, dataset_params):
 
 
 # %%
-# run_all_datasets("seer", "gbmi_log_loss")
+# run_all_datasets("seer", "aalen_johansen")
+# %%
+# run_all_datasets("support", "gbmi_log_loss")
+# %%
+run_all_datasets("support", "survtrace")
+# %%
+# run_all_datasets("metabric", "fine_and_gray")
+
 # %%

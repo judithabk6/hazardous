@@ -96,19 +96,11 @@ def make_time_grid(duration, n_steps=100):
 class SurvStratifiedShuffleSplit(StratifiedShuffleSplit):
     def split(self, X, y, groups=None):
         event, _ = check_y_survival(y)
+        event = event.astype(int)
         return super().split(X, event, groups)
 
 
 class SurvStratifiedSingleSplit(SurvStratifiedShuffleSplit):
-    def split(self, X, y, groups=None):
-        train, test = next(iter(super().split(X, y, groups)))
-        yield train, test
-
-    def get_n_splits(self, X=None, y=None, groups=None):
-        return 1
-
-
-class SurvStratifiedShuffleSplit(SurvStratifiedKFold):
     def split(self, X, y, groups=None):
         train, test = next(iter(super().split(X, y, groups)))
         yield train, test

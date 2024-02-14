@@ -107,7 +107,7 @@ class SurvTRACE(NeuralNet):
             callbacks = [
                 ShapeSetter(),
                 ProgressBar(detect_notebook=False),
-                EarlyStopping(monitor="valid_loss", patience=2, threshold=0.001),
+                EarlyStopping(monitor="valid_loss", patience=5, threshold=0.001),
             ]
 
         super().__init__(
@@ -423,10 +423,10 @@ class _SurvTRACEModule(nn.Module):
         init_range=0.02,
         # BertEmbedding
         n_numerical_features=1,  # *
-        vocab_size=8,  # *
+        vocab_size=25,  # *
         hidden_size=16,
         layer_norm_eps=1e-12,
-        hidden_dropout_prob=0.0,
+        hidden_dropout_prob=0.1,
         initializer_range=0.02,
         # BertEncoder
         num_hidden_layers=3,
