@@ -78,10 +78,23 @@ class SurvTRACE(NeuralNet):
         max_epochs=100,
         iterator_valid__batch_size=10_000,
         random_state=None,
+        hidden_size=16,
+        # BertEncoder
+        num_hidden_layers=3,
+        # BertCLS
+        intermediate_size=64,
         **kwargs,
     ):
         if module is None:
-            module = _SurvTRACEModule()
+            module = _SurvTRACEModule(
+                hidden_size=hidden_size,
+                hidden_dropout_prob=0.1,
+                initializer_range=0.02,
+                # BertEncoder
+                num_hidden_layers=num_hidden_layers,
+                # BertCLS
+                intermediate_size=intermediate_size,
+            )
 
         if criterion is None:
             criterion = NLLPCHazardLoss
