@@ -20,6 +20,7 @@ from display_utils import (
     load_dataset,
 )
 from hazardous.utils import make_time_grid
+from hazardous.metrics._yana import CensoredNegativeLogLikelihoodSimple
 
 sns.set_style(style="white")
 sns.set_context("paper")
@@ -30,8 +31,8 @@ DATASET_NAME = "metabric"
 SEER_PATH = "../hazardous/data/seer_cancer_cardio_raw_data.txt"
 SEED = 0
 
-path_session_dataset = Path("2024-02-15") / DATASET_NAME
-estimator_names = ["gbmi_log_loss", "survtrace", "deephit", "deepsurv"]
+path_session_dataset = Path("final_metabric") / DATASET_NAME
+estimator_names = ["gbmi_log_loss", "survtrace", "rsf"]
 
 df = aggregate_result(path_session_dataset, estimator_names)
 
@@ -79,7 +80,6 @@ def compute_metrics(
     n_events=3,
 ):
     results = []
-
     for estimator_name, y_pred in all_y_pred.items():
         ibs = integrated_brier_score_incidence(
             y_train=y_train,
@@ -104,7 +104,6 @@ def compute_metrics(
             dtype=[("e", bool), ("t", float)],
         )
         for time_idx, (time, quantile) in enumerate(zip(times, truncation_quantiles)):
-            # import ipdb; ipdb.set_trace()
             y_pred_at_t = y_pred[1, :, time_idx]
             ct_index, _, _, _, _ = concordance_index_ipcw(
                 et_train,
@@ -131,7 +130,7 @@ truncation_quantiles = [0.25, 0.5, 0.75]
 results_all_seeds = []
 for seed in range(5):
     X_test, y_test = get_test_data(DATASET_NAME, 0)
-    time_grid = make_time_grid(y_test["duration"])
+    time_grid = make_time_grid(y_test["duration"], n_steps=100)
     n_events = get_n_events(y_test["event"])
     times, y_train, all_y_pred = predict_on_quantiles_for_seed(
         df, X_test, time_grid, random_state=seed
@@ -139,6 +138,19 @@ for seed in range(5):
     results = compute_metrics(
         y_train, y_test, all_y_pred, time_grid, times, truncation_quantiles, n_events
     )
+
+    time_grid_yana = make_time_grid(y_test["duration"], n_steps=32)
+    yana_loss = CensoredNegativeLogLikelihoodSimple()
+
+    _, _, all_y_pred_yana = predict_on_quantiles_for_seed(
+        df, X_test, time_grid_yana, random_state=seed
+    )
+    for estimator_name, y_pred in all_y_pred_yana.items():
+        yana_l = yana_loss.loss(
+            y_pred, y_test["duration"], y_test["event"], time_grid_yana
+        )
+        results.loc[results["estimator_name"] == estimator_name, "yana_l"] = yana_l
+
     results["seed"] = seed
     results_all_seeds.append(results)
 # %%
@@ -169,6 +181,28 @@ print("STD IBS")
 display(results_ibs.std().iloc[:, 1:])
 
 # %%
+results_yana = (
+    (
+        results_all_seeds[["estimator_name", "event", "yana_l", "seed"]]
+        .drop_duplicates()
+        .pivot(
+            index=["estimator_name", "seed"],
+            columns="event",
+            values="yana_l",
+        )
+    )
+    .reset_index()
+    .groupby("estimator_name")
+)
+
+# %%
+print("MEAN YANA")
+display(results_yana.mean().iloc[:, 1:])
+print("\n")
+print("STD YANA")
+display(results_yana.std().iloc[:, 1:])
+
+# %%
 results_ct_index = (
     results_all_seeds.sort_values(["truncation_q", "event"])
     .pivot(
@@ -191,5 +225,3 @@ display(results_ct_index.std().iloc[:, 1:])
 print(results_ibs.mean().iloc[:, 1:].to_latex())
 print("\n")
 print(results_ct_index.mean().iloc[:, 1:].to_latex())
-
-# %%
