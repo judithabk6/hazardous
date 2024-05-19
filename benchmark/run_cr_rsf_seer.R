@@ -71,3 +71,8 @@ for (seed in 0:4) {
     write.table(pred_obj$cif, paste('test_cif_seer_srf_100000_', format(seed, scientific=F), '.csv', sep=''), row.names=F, sep=',')
     write.table(pred_obj$time.interest, paste('test_timegrid_seer_srf_100000_', format(seed, scientific=F), '.csv', sep=''), row.names=F, sep=',')
 }
+
+array([31., 61., 91.])
+cindex(df.obj, formula=Surv(duration, event) ~ ., data=df_test, eval.times=c(31., 61., 91.), cause=3)
+cindex(df.obj, formula=Surv(duration, event) ~ ., data=df_test, eval.times=c(31., 61., 91.), cause=2)
+cindex(df.obj, formula=Surv(duration, event) ~ ., data=df_test, eval.times=c(31., 61., 91.), cause=1)
